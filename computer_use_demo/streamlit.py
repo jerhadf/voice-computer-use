@@ -27,6 +27,7 @@ from computer_use_demo.loop import (
     sampling_loop,
 )
 from computer_use_demo.tools import ToolResult
+from computer_use_demo.voice_interface import VoiceInterface
 
 CONFIG_DIR = PosixPath("~/.anthropic").expanduser()
 API_KEY_FILE = CONFIG_DIR / "api_key"
@@ -98,7 +99,7 @@ async def main():
 
     st.markdown(STREAMLIT_STYLE, unsafe_allow_html=True)
 
-    st.title("Claude Computer Use Demo")
+    st.title("Computer Control Interface")
 
     if not os.getenv("HIDE_WARNING", False):
         st.warning(WARNING_TEXT)
@@ -147,72 +148,94 @@ async def main():
         else:
             st.session_state.auth_validated = True
 
-    chat, http_logs = st.tabs(["Chat", "HTTP Exchange Logs"])
-    new_message = st.chat_input(
-        "Type a message to send to Claude to control the computer..."
+    # Initialize voice interface
+    voice_interface = VoiceInterface(
+        anthropic_key=os.getenv("ANTHROPIC_API_KEY"),
+        hume_key=os.getenv("HUME_API_KEY")
     )
 
+    chat, http_logs = st.tabs(["Chat", "HTTP Exchange Logs"])
+
     with chat:
-        # render past chats
-        for message in st.session_state.messages:
-            if isinstance(message["content"], str):
-                _render_message(message["role"], message["content"])
-            elif isinstance(message["content"], list):
-                for block in message["content"]:
-                    # the tool result we send back to the Anthropic API isn't sufficient to render all details,
-                    # so we store the tool use responses
-                    if isinstance(block, dict) and block["type"] == "tool_result":
-                        _render_message(
-                            Sender.TOOL, st.session_state.tools[block["tool_use_id"]]
-                        )
-                    else:
-                        _render_message(
-                            message["role"],
-                            cast(BetaTextBlock | BetaToolUseBlock, block),
-                        )
+        # Add voice controls
+        voice_interface.render_voice_controls()
 
-        # render past http exchanges
-        for identity, response in st.session_state.responses.items():
-            _render_api_response(response, identity, http_logs)
-
-        # render past chats
-        if new_message:
-            st.session_state.messages.append(
-                {
-                    "role": Sender.USER,
-                    "content": [TextBlock(type="text", text=new_message)],
-                }
-            )
-            _render_message(Sender.USER, new_message)
+        # Start voice connection in background
+        voice_task = asyncio.create_task(voice_interface.start_voice_connection())
 
         try:
-            most_recent_message = st.session_state["messages"][-1]
-        except IndexError:
-            return
-
-        if most_recent_message["role"] is not Sender.USER:
-            # we don't have a user message to respond to, exit early
-            return
-
-        with st.spinner("Running Agent..."):
-            # run the agent sampling loop with the newest message
-            st.session_state.messages = await sampling_loop(
-                system_prompt_suffix=st.session_state.custom_system_prompt,
-                model=st.session_state.model,
-                provider=st.session_state.provider,
-                messages=st.session_state.messages,
-                output_callback=partial(_render_message, Sender.BOT),
-                tool_output_callback=partial(
-                    _tool_output_callback, tool_state=st.session_state.tools
-                ),
-                api_response_callback=partial(
-                    _api_response_callback,
-                    tab=http_logs,
-                    response_state=st.session_state.responses,
-                ),
-                api_key=st.session_state.api_key,
-                only_n_most_recent_images=st.session_state.only_n_most_recent_images,
+            # Continue with rest of Streamlit UI
+            new_message = st.chat_input(
+                "Type or speak a message to control the computer..."
             )
+
+            if new_message:
+                await voice_interface.handle_voice_input(new_message)
+
+            # render past chats
+            for message in st.session_state.messages:
+                if isinstance(message["content"], str):
+                    _render_message(message["role"], message["content"])
+                elif isinstance(message["content"], list):
+                    for block in message["content"]:
+                        # the tool result we send back to the Anthropic API isn't sufficient to render all details,
+                        # so we store the tool use responses
+                        if isinstance(block, dict) and block["type"] == "tool_result":
+                            _render_message(
+                                Sender.TOOL, st.session_state.tools[block["tool_use_id"]]
+                            )
+                        else:
+                            _render_message(
+                                message["role"],
+                                cast(BetaTextBlock | BetaToolUseBlock, block),
+                            )
+
+            # render past http exchanges
+            for identity, response in st.session_state.responses.items():
+                _render_api_response(response, identity, http_logs)
+
+            # render past chats
+            if new_message:
+                st.session_state.messages.append(
+                    {
+                        "role": Sender.USER,
+                        "content": [TextBlock(type="text", text=new_message)],
+                    }
+                )
+                _render_message(Sender.USER, new_message)
+
+            try:
+                most_recent_message = st.session_state["messages"][-1]
+            except IndexError:
+                return
+
+            if most_recent_message["role"] is not Sender.USER:
+                # we don't have a user message to respond to, exit early
+                return
+
+            with st.spinner("Running Agent..."):
+                # run the agent sampling loop with the newest message
+                st.session_state.messages = await sampling_loop(
+                    system_prompt_suffix=st.session_state.custom_system_prompt,
+                    model=st.session_state.model,
+                    provider=st.session_state.provider,
+                    messages=st.session_state.messages,
+                    output_callback=partial(_render_message, Sender.BOT),
+                    tool_output_callback=partial(
+                        _tool_output_callback, tool_state=st.session_state.tools
+                    ),
+                    api_response_callback=partial(
+                        _api_response_callback,
+                        tab=http_logs,
+                        response_state=st.session_state.responses,
+                    ),
+                    api_key=st.session_state.api_key,
+                    only_n_most_recent_images=st.session_state.only_n_most_recent_images,
+                )
+        finally:
+            # Clean up voice connection
+            if voice_task and not voice_task.done():
+                voice_task.cancel()
 
 
 def validate_auth(provider: APIProvider, api_key: str | None):
