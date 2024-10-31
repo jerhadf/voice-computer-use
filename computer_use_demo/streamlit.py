@@ -15,8 +15,7 @@ from typing import cast
 import streamlit as st
 from anthropic import APIResponse
 from anthropic.types import (
-    TextBlock,
-)
+    TextBlock, )
 from anthropic.types.beta import BetaMessage, BetaTextBlock, BetaToolUseBlock
 from anthropic.types.tool_use_block import ToolUseBlock
 from streamlit.delta_generator import DeltaGenerator
@@ -62,15 +61,12 @@ async def setup_state():
         st.session_state.messages = []
     if "api_key" not in st.session_state:
         # Try to load API key from file first, then environment
-        st.session_state.api_key = os.getenv(
-            "ANTHROPIC_API_KEY", ""
-        )
+        st.session_state.api_key = os.getenv("ANTHROPIC_API_KEY", "")
     if "api_key_input" not in st.session_state:
         st.session_state.api_key_input = st.session_state.api_key
     if "provider" not in st.session_state:
-        st.session_state.provider = (
-            os.getenv("API_PROVIDER", "anthropic") or APIProvider.ANTHROPIC
-        )
+        st.session_state.provider = (os.getenv("API_PROVIDER", "anthropic")
+                                     or APIProvider.ANTHROPIC)
     if "model" not in st.session_state:
         _reset_model()
     if "auth_validated" not in st.session_state:
@@ -82,15 +78,17 @@ async def setup_state():
     if "only_n_most_recent_images" not in st.session_state:
         st.session_state.only_n_most_recent_images = 10
     if "custom_system_prompt" not in st.session_state:
-        st.session_state.custom_system_prompt = load_from_storage("system_prompt") or ""
+        st.session_state.custom_system_prompt = load_from_storage(
+            "system_prompt") or ""
     if "hide_images" not in st.session_state:
         st.session_state.hide_images = False
+    if "is_recording" not in st.session_state:
+        st.session_state.is_recording = False
 
 
 def _reset_model():
-    st.session_state.model = PROVIDER_TO_DEFAULT_MODEL_NAME[
-        cast(APIProvider, st.session_state.provider)
-    ]
+    st.session_state.model = PROVIDER_TO_DEFAULT_MODEL_NAME[cast(
+        APIProvider, st.session_state.provider)]
 
 
 async def main():
@@ -118,15 +116,16 @@ async def main():
             "Only send N most recent images",
             min_value=0,
             key="only_n_most_recent_images",
-            help="To decrease the total tokens sent, remove older screenshots from the conversation",
+            help=
+            "To decrease the total tokens sent, remove older screenshots from the conversation",
         )
         st.text_area(
             "Custom System Prompt Suffix",
             key="custom_system_prompt",
-            help="Additional instructions to append to the system prompt. see computer_use_demo/loop.py for the base system prompt.",
+            help=
+            "Additional instructions to append to the system prompt. see computer_use_demo/loop.py for the base system prompt.",
             on_change=lambda: save_to_storage(
-                "system_prompt", st.session_state.custom_system_prompt
-            ),
+                "system_prompt", st.session_state.custom_system_prompt),
         )
         st.checkbox("Hide screenshots", key="hide_images")
 
@@ -135,15 +134,16 @@ async def main():
                 st.session_state.clear()
                 setup_state()
 
-                subprocess.run("pkill Xvfb; pkill tint2", shell=True)  # noqa: ASYNC221
+                subprocess.run("pkill Xvfb; pkill tint2",
+                               shell=True)  # noqa: ASYNC221
                 await asyncio.sleep(1)
                 subprocess.run("./start_all.sh", shell=True)  # noqa: ASYNC221
 
     if not st.session_state.auth_validated:
-        if auth_error := validate_auth(
-            st.session_state.provider, st.session_state.api_key
-        ):
-            st.warning(f"Please resolve the following auth issue:\n\n{auth_error}")
+        if auth_error := validate_auth(st.session_state.provider,
+                                       st.session_state.api_key):
+            st.warning(
+                f"Please resolve the following auth issue:\n\n{auth_error}")
             return
         else:
             st.session_state.auth_validated = True
@@ -151,8 +151,7 @@ async def main():
     # Initialize voice interface
     voice_interface = VoiceInterface(
         anthropic_key=os.getenv("ANTHROPIC_API_KEY"),
-        hume_key=os.getenv("HUME_API_KEY")
-    )
+        hume_key=os.getenv("HUME_API_KEY"))
 
     chat, http_logs = st.tabs(["Chat", "HTTP Exchange Logs"])
 
@@ -161,13 +160,13 @@ async def main():
         voice_interface.render_voice_controls()
 
         # Start voice connection in background
-        voice_task = asyncio.create_task(voice_interface.start_voice_connection())
+        voice_task = asyncio.create_task(
+            voice_interface.start_voice_connection())
 
         try:
             # Continue with rest of Streamlit UI
             new_message = st.chat_input(
-                "Type or speak a message to control the computer..."
-            )
+                "Type or speak a message to control the computer...")
 
             if new_message:
                 await voice_interface.handle_voice_input(new_message)
@@ -180,10 +179,11 @@ async def main():
                     for block in message["content"]:
                         # the tool result we send back to the Anthropic API isn't sufficient to render all details,
                         # so we store the tool use responses
-                        if isinstance(block, dict) and block["type"] == "tool_result":
+                        if isinstance(block,
+                                      dict) and block["type"] == "tool_result":
                             _render_message(
-                                Sender.TOOL, st.session_state.tools[block["tool_use_id"]]
-                            )
+                                Sender.TOOL,
+                                st.session_state.tools[block["tool_use_id"]])
                         else:
                             _render_message(
                                 message["role"],
@@ -196,12 +196,11 @@ async def main():
 
             # render past chats
             if new_message:
-                st.session_state.messages.append(
-                    {
-                        "role": Sender.USER,
-                        "content": [TextBlock(type="text", text=new_message)],
-                    }
-                )
+                st.session_state.messages.append({
+                    "role":
+                    Sender.USER,
+                    "content": [TextBlock(type="text", text=new_message)],
+                })
                 _render_message(Sender.USER, new_message)
 
             try:
@@ -222,15 +221,16 @@ async def main():
                     messages=st.session_state.messages,
                     output_callback=partial(_render_message, Sender.BOT),
                     tool_output_callback=partial(
-                        _tool_output_callback, tool_state=st.session_state.tools
-                    ),
+                        _tool_output_callback,
+                        tool_state=st.session_state.tools),
                     api_response_callback=partial(
                         _api_response_callback,
                         tab=http_logs,
                         response_state=st.session_state.responses,
                     ),
                     api_key=st.session_state.api_key,
-                    only_n_most_recent_images=st.session_state.only_n_most_recent_images,
+                    only_n_most_recent_images=st.session_state.
+                    only_n_most_recent_images,
                 )
         finally:
             # Clean up voice connection
@@ -282,17 +282,15 @@ def _api_response_callback(
     _render_api_response(response, response_id, tab)
 
 
-def _tool_output_callback(
-    tool_output: ToolResult, tool_id: str, tool_state: dict[str, ToolResult]
-):
+def _tool_output_callback(tool_output: ToolResult, tool_id: str,
+                          tool_state: dict[str, ToolResult]):
     """Handle a tool output by storing it to state and rendering it."""
     tool_state[tool_id] = tool_output
     _render_message(Sender.TOOL, tool_output)
 
 
-def _render_api_response(
-    response: APIResponse[BetaMessage], response_id: str, tab: DeltaGenerator
-):
+def _render_api_response(response: APIResponse[BetaMessage], response_id: str,
+                         tab: DeltaGenerator):
     """Render an API response to a streamlit tab"""
     with tab:
         with st.expander(f"Request/Response ({response_id})"):
@@ -313,17 +311,13 @@ def _render_message(
 ):
     """Convert input from the user or output from the agent to a streamlit message."""
     # streamlit's hotreloading breaks isinstance checks, so we need to check for class names
-    is_tool_result = not isinstance(message, str) and (
-        isinstance(message, ToolResult)
-        or message.__class__.__name__ == "ToolResult"
-        or message.__class__.__name__ == "CLIResult"
-    )
-    if not message or (
-        is_tool_result
-        and st.session_state.hide_images
-        and not hasattr(message, "error")
-        and not hasattr(message, "output")
-    ):
+    is_tool_result = not isinstance(
+        message, str) and (isinstance(message, ToolResult)
+                           or message.__class__.__name__ == "ToolResult"
+                           or message.__class__.__name__ == "CLIResult")
+    if not message or (is_tool_result and st.session_state.hide_images
+                       and not hasattr(message, "error")
+                       and not hasattr(message, "output")):
         return
     with st.chat_message(sender):
         if is_tool_result:
@@ -337,9 +331,11 @@ def _render_message(
                 st.error(message.error)
             if message.base64_image and not st.session_state.hide_images:
                 st.image(base64.b64decode(message.base64_image))
-        elif isinstance(message, BetaTextBlock) or isinstance(message, TextBlock):
+        elif isinstance(message, BetaTextBlock) or isinstance(
+                message, TextBlock):
             st.write(message.text)
-        elif isinstance(message, BetaToolUseBlock) or isinstance(message, ToolUseBlock):
+        elif isinstance(message, BetaToolUseBlock) or isinstance(
+                message, ToolUseBlock):
             st.code(f"Tool Use: {message.name}\nInput: {message.input}")
         else:
             st.markdown(message)

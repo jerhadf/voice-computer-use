@@ -42,7 +42,6 @@ PROVIDER_TO_DEFAULT_MODEL_NAME: dict[APIProvider, str] = {
     APIProvider.VERTEX: "claude-3-5-sonnet-v2@20241022",
 }
 
-
 # This system prompt is optimized for the Docker environment in this repository and
 # specific tool combinations enabled.
 # We encourage modifying this system prompt to ensure the model has context for the
@@ -92,7 +91,8 @@ async def sampling_loop(
 
     while True:
         if only_n_most_recent_images:
-            _maybe_filter_to_n_most_recent_images(messages, only_n_most_recent_images)
+            _maybe_filter_to_n_most_recent_images(messages,
+                                                  only_n_most_recent_images)
 
         # Call the API
         # we use raw_response to provide debug information to streamlit. Your
@@ -100,15 +100,15 @@ async def sampling_loop(
         # `response = client.messages.create(...)` instead.
         if provider == APIProvider.ANTHROPIC:
             raw_response = Anthropic(
-                api_key=api_key
-            ).beta.messages.with_raw_response.create(
-                max_tokens=max_tokens,
-                messages=messages,
-                model=model,
-                system=system,
-                tools=cast(list[BetaToolParam], tool_collection.to_params()),
-                extra_headers={"anthropic-beta": BETA_FLAG},
-            )
+                api_key=api_key).beta.messages.with_raw_response.create(
+                    max_tokens=max_tokens,
+                    messages=messages,
+                    model=model,
+                    system=system,
+                    tools=cast(list[BetaToolParam],
+                               tool_collection.to_params()),
+                    extra_headers={"anthropic-beta": BETA_FLAG},
+                )
         elif provider == APIProvider.VERTEX:
             raw_response = AnthropicVertex().messages.with_raw_response.create(
                 max_tokens=max_tokens,
@@ -119,7 +119,8 @@ async def sampling_loop(
                 extra_headers={"anthropic-beta": BETA_FLAG},
             )
         elif provider == APIProvider.BEDROCK:
-            raw_response = AnthropicBedrock().messages.with_raw_response.create(
+            raw_response = AnthropicBedrock(
+            ).messages.with_raw_response.create(
                 max_tokens=max_tokens,
                 messages=cast(list[MessageParam], messages),
                 model=model,
@@ -132,12 +133,12 @@ async def sampling_loop(
 
         response = raw_response.parse()
 
-        messages.append(
-            {
-                "role": "assistant",
-                "content": cast(list[BetaContentBlockParam], response.content),
-            }
-        )
+        messages.append({
+            "role":
+            "assistant",
+            "content":
+            cast(list[BetaContentBlockParam], response.content),
+        })
 
         tool_result_content: list[BetaToolResultBlockParam] = []
         for content_block in cast(list[BetaContentBlock], response.content):
@@ -148,8 +149,7 @@ async def sampling_loop(
                     tool_input=cast(dict[str, Any], content_block.input),
                 )
                 tool_result_content.append(
-                    _make_api_tool_result(result, content_block.id)
-                )
+                    _make_api_tool_result(result, content_block.id))
                 tool_output_callback(result, content_block.id)
 
         if not tool_result_content:
@@ -175,21 +175,17 @@ def _maybe_filter_to_n_most_recent_images(
     tool_result_blocks = cast(
         list[ToolResultBlockParam],
         [
-            item
-            for message in messages
-            for item in (
-                message["content"] if isinstance(message["content"], list) else []
-            )
+            item for message in messages
+            for item in (message["content"] if isinstance(
+                message["content"], list) else [])
             if isinstance(item, dict) and item.get("type") == "tool_result"
         ],
     )
 
     total_images = sum(
-        1
-        for tool_result in tool_result_blocks
+        1 for tool_result in tool_result_blocks
         for content in tool_result.get("content", [])
-        if isinstance(content, dict) and content.get("type") == "image"
-    )
+        if isinstance(content, dict) and content.get("type") == "image")
 
     images_to_remove = total_images - images_to_keep
     # for better cache behavior, we want to remove in chunks
@@ -199,7 +195,8 @@ def _maybe_filter_to_n_most_recent_images(
         if isinstance(tool_result.get("content"), list):
             new_content = []
             for content in tool_result.get("content", []):
-                if isinstance(content, dict) and content.get("type") == "image":
+                if isinstance(content,
+                              dict) and content.get("type") == "image":
                     if images_to_remove > 0:
                         images_to_remove -= 1
                         continue
@@ -207,34 +204,33 @@ def _maybe_filter_to_n_most_recent_images(
             tool_result["content"] = new_content
 
 
-def _make_api_tool_result(
-    result: ToolResult, tool_use_id: str
-) -> BetaToolResultBlockParam:
+def _make_api_tool_result(result: ToolResult,
+                          tool_use_id: str) -> BetaToolResultBlockParam:
     """Convert an agent ToolResult to an API ToolResultBlockParam."""
-    tool_result_content: list[BetaTextBlockParam | BetaImageBlockParam] | str = []
+    tool_result_content: list[BetaTextBlockParam
+                              | BetaImageBlockParam] | str = []
     is_error = False
     if result.error:
         is_error = True
-        tool_result_content = _maybe_prepend_system_tool_result(result, result.error)
+        tool_result_content = _maybe_prepend_system_tool_result(
+            result, result.error)
     else:
         if result.output:
-            tool_result_content.append(
-                {
-                    "type": "text",
-                    "text": _maybe_prepend_system_tool_result(result, result.output),
-                }
-            )
+            tool_result_content.append({
+                "type":
+                "text",
+                "text":
+                _maybe_prepend_system_tool_result(result, result.output),
+            })
         if result.base64_image:
-            tool_result_content.append(
-                {
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": "image/png",
-                        "data": result.base64_image,
-                    },
-                }
-            )
+            tool_result_content.append({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/png",
+                    "data": result.base64_image,
+                },
+            })
     return {
         "type": "tool_result",
         "content": tool_result_content,
