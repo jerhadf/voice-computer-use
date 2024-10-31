@@ -65,35 +65,61 @@ class VoiceInterface:
                 st.write("Click 🎤 to start speaking")
 
     async def start_voice_connection(self):
-        options = ChatConnectOptions(
-            config_id=os.getenv("HUME_CONFIG_ID"),
-            secret_key=os.getenv("HUME_SECRET_KEY")
-        )
-
         try:
-            async with self.hume_client.empathic_voice.chat.connect() as socket:
+            # Initialize options for WebSocket connection
+            options = ChatConnectOptions(
+                config_id=os.getenv("HUME_CONFIG_ID"),
+                secret_key=os.getenv("HUME_SECRET_KEY")
+            )
+
+            # Connect with callbacks pattern
+            async with self.hume_client.empathic_voice.chat.connect_with_callbacks(
+                options=options,
+                on_open=self._on_socket_open,
+                on_message=self._on_socket_message,
+                on_close=self._on_socket_close,
+                on_error=self._on_socket_error
+            ) as socket:
                 self.socket = socket
 
-                # Set up message handler
-                async def on_message(msg):
-                    if msg.type == "user_message":
-                        await self.handle_voice_input(msg.message.content)
-
-                # Subscribe to socket messages
-                await socket.subscribe(on_message)
-
-                # Start microphone interface when recording
+                # Start microphone interface when recording is enabled
                 while True:
                     if st.session_state.is_recording:
-                        await MicrophoneInterface.start(
-                            socket,
-                            allow_user_interrupt=True,
-                            byte_stream=self.byte_stream
-                        )
+                        try:
+                            await MicrophoneInterface.start(
+                                socket,
+                                allow_user_interrupt=True,
+                                byte_stream=self.byte_stream
+                            )
+                        except Exception as e:
+                            st.error(f"Microphone error: {str(e)}")
+                            st.session_state.is_recording = False
                     await asyncio.sleep(0.1)
+
         except Exception as e:
             st.error(f"Voice connection error: {str(e)}")
             st.session_state.is_recording = False
+
+    async def _on_socket_open(self):
+        """Called when WebSocket connection opens"""
+        print("Voice connection opened")
+
+    async def _on_socket_message(self, message):
+        """Handle incoming WebSocket messages"""
+        if message.type == "user_message":
+            await self.handle_voice_input(message.message.content)
+        elif message.type == "audio_output":
+            # Handle audio output if needed
+            pass
+
+    async def _on_socket_close(self):
+        """Called when WebSocket connection closes"""
+        print("Voice connection closed")
+
+    async def _on_socket_error(self, error):
+        """Handle WebSocket errors"""
+        st.error(f"Voice connection error: {str(error)}")
+        st.session_state.is_recording = False
 
     async def start(self):
         self.init_streamlit_state()
