@@ -1656,6 +1656,28 @@ watchdog = {version = ">=2.1.5,<6", markers = "platform_system != \"Darwin\""}
 snowflake = ["snowflake-connector-python (>=2.8.0)", "snowflake-snowpark-python[modin] (>=1.17.0)"]
 
 [[package]]
+name = "streamlit-evi-chat"
+version = "0.0.4"
+description = "Simple Streamlit component for Hume AI's Empathic Voice Interface"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "streamlit_evi_chat-0.0.4-py3-none-any.whl", hash = "sha256:07f5284ee02175eac38eb4f89037564dfe2125afc95353c0b42cda3f6b2cff54"},
+    {file = "streamlit_evi_chat-0.0.4.tar.gz", hash = "sha256:719d4aec1b8dc6f0ec6ab2f05bae6969dcfd4e4d5a976f023016764bd8c9e0da"},
+]
+
+[package.dependencies]
+streamlit = ">=0.63"
+
+[package.extras]
+devel = ["playwright (==1.48.0)", "pytest (==7.4.0)", "pytest-playwright-snapshot (==1.0)", "pytest-rerunfailures (==12.0)", "requests (==2.31.0)", "wheel"]
+
+[package.source]
+type = "legacy"
+url = "https://test.pypi.org/simple"
+reference = "test-pypi"
+
+[[package]]
 name = "tenacity"
 version = "9.0.0"
 description = "Retry code until it succeeds"
@@ -2003,4 +2025,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10.0,<3.12"
-content-hash = "b197d3db733d607c63234216afe56346084ebaf0696abdba19ef10d5b76a5507"
+content-hash = "013fdf0046cc804867e470e416e319d30d58d647be5490b771a74a871f77cb55"

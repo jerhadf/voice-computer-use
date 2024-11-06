@@ -10,7 +10,7 @@ from datetime import datetime
 from enum import StrEnum
 from functools import partial
 from pathlib import PosixPath
-from typing import cast
+from typing import Optional, cast
 
 import streamlit as st
 from anthropic import APIResponse
@@ -18,15 +18,15 @@ from anthropic.types import (
     TextBlock, )
 from anthropic.types.beta import BetaMessage, BetaTextBlock, BetaToolUseBlock
 from anthropic.types.tool_use_block import ToolUseBlock
+from evi import Result as EviEvent, chat as evi_chat
 from streamlit.delta_generator import DeltaGenerator
 
 from computer_use_demo.loop import (
     PROVIDER_TO_DEFAULT_MODEL_NAME,
     APIProvider,
-    sampling_loop,
+    iterate_sampling_loop,
 )
 from computer_use_demo.tools import ToolResult
-from computer_use_demo.voice_interface import VoiceInterface
 
 CONFIG_DIR = PosixPath("~/.anthropic").expanduser()
 API_KEY_FILE = CONFIG_DIR / "api_key"
@@ -43,8 +43,6 @@ STREAMLIT_STYLE = """
     }
 </style>
 """
-
-WARNING_TEXT = "⚠️ Security Alert: Never provide access to sensitive accounts or data, as malicious web content can hijack Claude's behavior"
 
 
 class Sender(StrEnum):
@@ -99,143 +97,84 @@ async def main():
 
     st.title("Computer Control Interface")
 
-    if not os.getenv("HIDE_WARNING", False):
-        st.warning(WARNING_TEXT)
+    if auth_error := validate_auth(st.session_state.provider,
+                                   st.session_state.api_key):
+        st.warning(
+            f"Please resolve the following auth issue:\n\n{auth_error}")
+        return
+    else:
+        st.session_state.auth_validated = True
 
-    with st.sidebar:
+    # Continue with rest of Streamlit UI
+    user_input_message = st.chat_input(
+        "Type or speak a message to control the computer...")
 
-        def _reset_api_provider():
-            if st.session_state.provider_radio != st.session_state.provider:
-                _reset_model()
-                st.session_state.provider = st.session_state.provider_radio
-                st.session_state.auth_validated = False
+    anthropic_response_pending_tool_use = st.session_state.get(
+        'anthropic_response_pending_tool_use', None)
 
-        st.text_input("Model", key="model")
+    new_message = _hume_evi_chat(user_input_message=user_input_message)
 
-        st.number_input(
-            "Only send N most recent images",
-            min_value=0,
-            key="only_n_most_recent_images",
-            help=
-            "To decrease the total tokens sent, remove older screenshots from the conversation",
-        )
-        st.text_area(
-            "Custom System Prompt Suffix",
-            key="custom_system_prompt",
-            help=
-            "Additional instructions to append to the system prompt. see computer_use_demo/loop.py for the base system prompt.",
-            on_change=lambda: save_to_storage(
-                "system_prompt", st.session_state.custom_system_prompt),
-        )
-        st.checkbox("Hide screenshots", key="hide_images")
+    # render past chats
+    for message in st.session_state.messages:
+        if isinstance(message["content"], str):
+            _render_message(message["role"], message["content"])
+        elif isinstance(message["content"], list):
+            for block in message["content"]:
+                # the tool result we send back to the Anthropic API isn't sufficient to render all details,
+                # so we store the tool use responses
+                if isinstance(block, dict) and block["type"] == "tool_result":
+                    _render_message(
+                        Sender.TOOL,
+                        st.session_state.tools[block["tool_use_id"]])
+                else:
+                    _render_message(
+                        message["role"],
+                        cast(BetaTextBlock | BetaToolUseBlock, block),
+                    )
 
-        if st.button("Reset", type="primary"):
-            with st.spinner("Resetting..."):
-                st.session_state.clear()
-                setup_state()
+    if new_message:
+        st.session_state.messages.append({
+            "role":
+            Sender.USER,
+            "content": [TextBlock(type="text", text=new_message)],
+        })
+        _render_message(Sender.USER, new_message)
 
-                subprocess.run("pkill Xvfb; pkill tint2",
-                               shell=True)  # noqa: ASYNC221
-                await asyncio.sleep(1)
-                subprocess.run("./start_all.sh", shell=True)  # noqa: ASYNC221
+    try:
+        most_recent_message = st.session_state["messages"][-1]
+    except IndexError:
+        return
 
-    if not st.session_state.auth_validated:
-        if auth_error := validate_auth(st.session_state.provider,
-                                       st.session_state.api_key):
-            st.warning(
-                f"Please resolve the following auth issue:\n\n{auth_error}")
-            return
-        else:
-            st.session_state.auth_validated = True
+    if most_recent_message[
+            "role"] is not Sender.USER and not anthropic_response_pending_tool_use:
+        # we don't have a user message to respond to, exit early
+        return
 
-    # Initialize voice interface
-    voice_interface = VoiceInterface(
-        anthropic_key=os.getenv("ANTHROPIC_API_KEY"),
-        hume_key=os.getenv("HUME_API_KEY"))
+    # 1. User made a request to the loop, no request has been sent to anthropic "idle"
+    # 2. Anthropic request has been sent, but the tool uses for the latest anthropic request
+    #    have not yet been dispatched "pending_tool_use"
+    # 3. The last response from the anthropic API did not contain any tool use instructions, so
+    #.   we can wait for more user input "idle"
 
-    chat, http_logs = st.tabs(["Chat", "HTTP Exchange Logs"])
+    with st.spinner("Running Agent..."):
+        # run the agent sampling loop with the newest message
 
-    with chat:
-        # Add voice controls
-        voice_interface.render_voice_controls()
+        result = await iterate_sampling_loop(
+            anthropic_response_pending_tool_use=
+            anthropic_response_pending_tool_use,
+            system_prompt_suffix=st.session_state.custom_system_prompt,
+            model=st.session_state.model,
+            provider=st.session_state.provider,
+            messages=st.session_state.messages,
+            output_callback=partial(_render_message, Sender.BOT),
+            tool_output_callback=partial(_tool_output_callback,
+                                         tool_state=st.session_state.tools),
+            api_key=st.session_state.api_key,
+            only_n_most_recent_images=st.session_state.
+            only_n_most_recent_images)
+        st.session_state.anthropic_response_pending_tool_use = result
 
-        # Start voice connection in background
-        voice_task = asyncio.create_task(
-            voice_interface.start_voice_connection())
-
-        try:
-            # Continue with rest of Streamlit UI
-            new_message = st.chat_input(
-                "Type or speak a message to control the computer...")
-
-            if new_message:
-                await voice_interface.handle_voice_input(new_message)
-
-            # render past chats
-            for message in st.session_state.messages:
-                if isinstance(message["content"], str):
-                    _render_message(message["role"], message["content"])
-                elif isinstance(message["content"], list):
-                    for block in message["content"]:
-                        # the tool result we send back to the Anthropic API isn't sufficient to render all details,
-                        # so we store the tool use responses
-                        if isinstance(block,
-                                      dict) and block["type"] == "tool_result":
-                            _render_message(
-                                Sender.TOOL,
-                                st.session_state.tools[block["tool_use_id"]])
-                        else:
-                            _render_message(
-                                message["role"],
-                                cast(BetaTextBlock | BetaToolUseBlock, block),
-                            )
-
-            # render past http exchanges
-            for identity, response in st.session_state.responses.items():
-                _render_api_response(response, identity, http_logs)
-
-            # render past chats
-            if new_message:
-                st.session_state.messages.append({
-                    "role":
-                    Sender.USER,
-                    "content": [TextBlock(type="text", text=new_message)],
-                })
-                _render_message(Sender.USER, new_message)
-
-            try:
-                most_recent_message = st.session_state["messages"][-1]
-            except IndexError:
-                return
-
-            if most_recent_message["role"] is not Sender.USER:
-                # we don't have a user message to respond to, exit early
-                return
-
-            with st.spinner("Running Agent..."):
-                # run the agent sampling loop with the newest message
-                st.session_state.messages = await sampling_loop(
-                    system_prompt_suffix=st.session_state.custom_system_prompt,
-                    model=st.session_state.model,
-                    provider=st.session_state.provider,
-                    messages=st.session_state.messages,
-                    output_callback=partial(_render_message, Sender.BOT),
-                    tool_output_callback=partial(
-                        _tool_output_callback,
-                        tool_state=st.session_state.tools),
-                    api_response_callback=partial(
-                        _api_response_callback,
-                        tab=http_logs,
-                        response_state=st.session_state.responses,
-                    ),
-                    api_key=st.session_state.api_key,
-                    only_n_most_recent_images=st.session_state.
-                    only_n_most_recent_images,
-                )
-        finally:
-            # Clean up voice connection
-            if voice_task and not voice_task.done():
-                voice_task.cancel()
+    st.rerun()
 
 
 def validate_auth(provider: APIProvider, api_key: str | None):
@@ -269,17 +208,116 @@ def save_to_storage(filename: str, data: str) -> None:
         st.write(f"Debug: Error saving {filename}: {e}")
 
 
-def _api_response_callback(
-    response: APIResponse[BetaMessage],
-    tab: DeltaGenerator,
-    response_state: dict[str, APIResponse[BetaMessage]],
-):
+def _hume_get_assistant_input_message() -> Optional[str]:
+    assistant_messages = [
+        message for message in st.session_state.messages
+        if message.get("role", None) == "assistant"
+    ]
+    if not assistant_messages:
+        return None
+
+    ret = "\n".join(x for x in [
+        _hume_extract_speech_from_message(x)
+        for x in assistant_messages[-1]['content']
+    ] if x)
+    if not isinstance(ret, str):
+        st.error(ret)
+        st.error("was not a string")
+    return ret
+
+
+def _hume_pause_evi():
+    st.session_state['evi_assistant_paused'] = True
+
+
+def _hume_extract_speech_from_message(
+    message: str | BetaTextBlock | BetaToolUseBlock | ToolResult,
+) -> str | None:
+    """Adapted from _render_message but instead of producing streamlit output produces text, or returns None if the message isn't suitable for speaking"""
+    # TODO: this could be overkill, we probably don't actually call _hume_extract_speech_from_message on all these types of messages
+    is_tool_result = not isinstance(
+        message, str) and (isinstance(message, ToolResult)
+                           or message.__class__.__name__ == "ToolResult"
+                           or message.__class__.__name__ == "CLIResult")
+    if not message or (is_tool_result and st.session_state.hide_images
+                       and not hasattr(message, "error")
+                       and not hasattr(message, "output")):
+        return
+
+    if is_tool_result:
+        message = cast(ToolResult, message)
+        if message.output:
+            if message.__class__.__name__ == "CLIResult":
+                # TODO: maybe there is a nice way for EVI to opt out of trying to phonetically
+                # pronounce code
+                return message.output
+            else:
+                return message.output
+        if message.error:
+            return message.output
+        if message.base64_image and not st.session_state.hide_images:
+            # TODO: should EVI indicate the presence of an image?
+            return None
+    elif isinstance(message, BetaTextBlock) or isinstance(message, TextBlock):
+        return message.text
+    elif isinstance(message, BetaToolUseBlock) or isinstance(
+            message, ToolUseBlock):
+        # TODO: is there something better to do here? This looks like structured data and it's unclear how
+        # to get text from this
+        return str(message.input)
+    else:
+        return cast(str, message)
+
+
+def _hume_get_assistant_paused():
+    return st.session_state.get('evi_assistant_paused', False)
+
+
+def _hume_evi_chat(*, user_input_message: Optional[str]) -> Optional[str]:
     """
-    Handle an API response by storing it to state and rendering it.
+    Renders the EVI chat, handles commands to EVI that are passed in through
+    the session state, and acts on messages received from EVI. Returns a string
+    if EVI wants to send an instruction to Claude.
     """
-    response_id = datetime.now().isoformat()
-    response_state[response_id] = response
-    _render_api_response(response, response_id, tab)
+
+    hume_api_key = os.getenv("HUME_API_KEY")
+    event: Optional[EviEvent] = None
+
+    if not hume_api_key:
+        st.error("Please set HUME_API_KEY environment variable")
+        return None
+
+    if 'evi_chat' not in st.session_state:
+        st.session_state['evi_chat'] = None
+
+    # This line is necessary so that Streamlit keeps the same evi chat component
+    # and doesn't decide to discard the old one and render a new one when the arguments
+    # change.
+    st.session_state['evi_chat'] = st.session_state['evi_chat']
+
+    event = evi_chat(
+        hume_api_key=hume_api_key,
+        key="evi_chat",
+        assistant_input_message=_hume_get_assistant_input_message(),
+        assistant_paused=_hume_get_assistant_paused(),
+        user_input_message=user_input_message)
+
+    if not event:
+        return
+
+    if event['type'] == 'opened':
+        _hume_pause_evi()
+        return
+
+    if event['type'] == 'message':
+        # TODO: event['message'] exists but the type checker is complaining because
+        # the type is wrong
+        message = event['message']
+
+        if message['type'] == 'user_message':
+            return message['message']['content']
+
+    return None
 
 
 def _tool_output_callback(tool_output: ToolResult, tool_id: str,
@@ -287,22 +325,6 @@ def _tool_output_callback(tool_output: ToolResult, tool_id: str,
     """Handle a tool output by storing it to state and rendering it."""
     tool_state[tool_id] = tool_output
     _render_message(Sender.TOOL, tool_output)
-
-
-def _render_api_response(response: APIResponse[BetaMessage], response_id: str,
-                         tab: DeltaGenerator):
-    """Render an API response to a streamlit tab"""
-    with tab:
-        with st.expander(f"Request/Response ({response_id})"):
-            newline = "\n\n"
-            st.markdown(
-                f"`{response.http_request.method} {response.http_request.url}`{newline}{newline.join(f'`{k}: {v}`' for k, v in response.http_request.headers.items())}"
-            )
-            st.json(response.http_request.read().decode())
-            st.markdown(
-                f"`{response.http_response.status_code}`{newline}{newline.join(f'`{k}: {v}`' for k, v in response.headers.items())}"
-            )
-            st.json(response.http_response.text)
 
 
 def _render_message(

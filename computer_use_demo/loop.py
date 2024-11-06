@@ -4,16 +4,15 @@ Agentic sampling loop that calls the Anthropic API and local implenmentation of 
 
 import platform
 from collections.abc import Callable
+from copy import copy, deepcopy
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, cast
+from typing import Any, Optional, cast
 
-from anthropic import Anthropic, AnthropicBedrock, AnthropicVertex, APIResponse
+import streamlit as st
+from anthropic import AsyncAnthropic, APIResponse
 from anthropic.types import (
-    MessageParam,
-    ToolParam,
-    ToolResultBlockParam,
-)
+    ToolResultBlockParam, )
 from anthropic.types.beta import (
     BetaContentBlock,
     BetaContentBlockParam,
@@ -64,42 +63,72 @@ SYSTEM_PROMPT = f"""<SYSTEM_CAPABILITY>
 </IMPORTANT>"""
 
 
-async def sampling_loop(
+# This is just for getting debugging output that isn't cluttered with the bytes of images
+def truncate_data_field(obj, visited=None):
+    if visited is None:
+        visited = set()
+
+    obj_id = id(obj)
+    if obj_id in visited:
+        return obj  # Avoid revisiting objects
+
+    # Mark the current object as visited
+    visited.add(obj_id)
+
+    if isinstance(obj, dict):
+        return {
+            key:
+            "<data>" if key == "data" else truncate_data_field(value, visited)
+            for key, value in obj.items()
+        }
+    elif isinstance(obj, list):
+        return [truncate_data_field(item, visited) for item in obj]
+    elif isinstance(obj, tuple):
+        return tuple(truncate_data_field(item, visited) for item in obj)
+    elif isinstance(obj, set):
+        return {truncate_data_field(item, visited) for item in obj}
+    elif hasattr(obj, "__dict__") and not isinstance(
+            obj, (str, int, float, bool)):  # For mutable class instances only
+        new_obj = deepcopy(
+            obj
+        )  # Make a deep copy of the object to avoid modifying the original
+        visited.add(id(new_obj))
+        for key, value in new_obj.__dict__.items():
+            if key == "data":
+                setattr(new_obj, key, "<data>")
+            else:
+                setattr(new_obj, key, truncate_data_field(value, visited))
+        return new_obj
+    else:
+        return obj
+
+
+async def phone_anthropic(
     *,
+    tool_collection: ToolCollection,
     model: str,
     provider: APIProvider,
     system_prompt_suffix: str,
     messages: list[BetaMessageParam],
-    output_callback: Callable[[BetaContentBlock], None],
-    tool_output_callback: Callable[[ToolResult, str], None],
-    api_response_callback: Callable[[APIResponse[BetaMessage]], None],
     api_key: str,
-    only_n_most_recent_images: int | None = None,
-    max_tokens: int = 4096,
-):
-    """
-    Agentic sampling loop for the assistant/tool interaction of computer use.
-    """
-    tool_collection = ToolCollection(
-        ComputerTool(),
-        BashTool(),
-        EditTool(),
-    )
+    only_n_most_recent_images: int | None,
+    max_tokens: int,
+) -> BetaMessage:
     system = (
         f"{SYSTEM_PROMPT}{' ' + system_prompt_suffix if system_prompt_suffix else ''}"
     )
+    if only_n_most_recent_images:
+        _maybe_filter_to_n_most_recent_images(messages,
+                                              only_n_most_recent_images)
 
-    while True:
-        if only_n_most_recent_images:
-            _maybe_filter_to_n_most_recent_images(messages,
-                                                  only_n_most_recent_images)
+    # we use raw_response to provide debug information to streamlit. Your
+    # implementation may be able call the SDK directly with:
+    # `response = client.messages.create(...)` instead.
 
-        # Call the API
-        # we use raw_response to provide debug information to streamlit. Your
-        # implementation may be able call the SDK directly with:
-        # `response = client.messages.create(...)` instead.
-        if provider == APIProvider.ANTHROPIC:
-            raw_response = Anthropic(
+    if provider == APIProvider.ANTHROPIC:
+        try:
+            print("Awaiting response from Anthropic messages.create...")
+            raw_response = await AsyncAnthropic(
                 api_key=api_key).beta.messages.with_raw_response.create(
                     max_tokens=max_tokens,
                     messages=messages,
@@ -109,53 +138,101 @@ async def sampling_loop(
                                tool_collection.to_params()),
                     extra_headers={"anthropic-beta": BETA_FLAG},
                 )
-        elif provider == APIProvider.VERTEX:
-            raw_response = AnthropicVertex().messages.with_raw_response.create(
-                max_tokens=max_tokens,
-                messages=cast(list[MessageParam], messages),
-                model=model,
-                system=system,
-                tools=cast(list[ToolParam], tool_collection.to_params()),
-                extra_headers={"anthropic-beta": BETA_FLAG},
+            print("Completed response from Anthropic messages.create...")
+        except Exception as e:
+            st.error(e)
+            raise e
+    else:
+        st.error("Unexpected provider")
+        raise ValueError(f"Unexpected provider: {provider}")
+
+    response = raw_response.parse()
+
+    messages.append({
+        "role":
+        "assistant",
+        "content":
+        cast(list[BetaContentBlockParam], response.content),
+    })
+
+    return response
+
+
+async def use_tools(
+    *,
+    model: str,
+    messages: list[BetaMessageParam],
+    output_callback: Callable[[BetaContentBlock], None],
+    tool_output_callback: Callable[[ToolResult, str], None],
+    tool_collection: ToolCollection,
+    response: BetaMessage,
+) -> bool:
+    is_done = False
+    tool_result_content: list[BetaToolResultBlockParam] = []
+    for content_block in cast(list[BetaContentBlock], response.content):
+        if content_block.type == "tool_use":
+            result = await tool_collection.run(
+                name=content_block.name,
+                tool_input=cast(dict[str, Any], content_block.input),
             )
-        elif provider == APIProvider.BEDROCK:
-            raw_response = AnthropicBedrock(
-            ).messages.with_raw_response.create(
-                max_tokens=max_tokens,
-                messages=cast(list[MessageParam], messages),
-                model=model,
-                system=system,
-                tools=cast(list[ToolParam], tool_collection.to_params()),
-                extra_body={"anthropic_beta": [BETA_FLAG]},
-            )
+            tool_result_content.append(
+                _make_api_tool_result(result, content_block.id))
+            tool_output_callback(result, content_block.id)
 
-        api_response_callback(cast(APIResponse[BetaMessage], raw_response))
-
-        response = raw_response.parse()
-
-        messages.append({
-            "role":
-            "assistant",
-            "content":
-            cast(list[BetaContentBlockParam], response.content),
-        })
-
-        tool_result_content: list[BetaToolResultBlockParam] = []
-        for content_block in cast(list[BetaContentBlock], response.content):
-            output_callback(content_block)
-            if content_block.type == "tool_use":
-                result = await tool_collection.run(
-                    name=content_block.name,
-                    tool_input=cast(dict[str, Any], content_block.input),
-                )
-                tool_result_content.append(
-                    _make_api_tool_result(result, content_block.id))
-                tool_output_callback(result, content_block.id)
-
-        if not tool_result_content:
-            return messages
-
+    if not tool_result_content:
+        is_done = True
+    else:
         messages.append({"content": tool_result_content, "role": "user"})
+
+    return is_done
+
+
+async def iterate_sampling_loop(
+    *,
+    anthropic_response_pending_tool_use: Optional[BetaMessage],
+    model: str,
+    provider: APIProvider,
+    system_prompt_suffix: str,
+    messages: list[BetaMessageParam],
+    api_key: str,
+    only_n_most_recent_images: int | None = None,
+    max_tokens: int = 4096,
+) -> Optional[BetaMessage]:
+    """
+    Agentic sampling loop for the assistant/tool interaction of computer use.
+    """
+    tool_collection = ToolCollection(
+        ComputerTool(),
+        BashTool(),
+        EditTool(),
+    )
+
+    is_done = False
+    if anthropic_response_pending_tool_use:
+        is_done = await use_tools(model=model,
+                                  messages=messages,
+                                  output_callback=output_callback,
+                                  tool_output_callback=tool_output_callback,
+                                  tool_collection=tool_collection,
+                                  response=anthropic_response_pending_tool_use)
+
+        if is_done:
+            return None
+
+    try:
+        result = await phone_anthropic(
+            tool_collection=tool_collection,
+            model=model,
+            provider=provider,
+            system_prompt_suffix=system_prompt_suffix,
+            messages=messages,
+            api_key=api_key,
+            only_n_most_recent_images=only_n_most_recent_images,
+            max_tokens=max_tokens,
+        )
+        return result
+    except Exception as e:
+        return None
 
 
 def _maybe_filter_to_n_most_recent_images(

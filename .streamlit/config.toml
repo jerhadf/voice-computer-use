@@ -5,3 +5,6 @@ port = 5000
 
 [browser]
 gatherUsageStats = false
+
+[client]
+showErrorDetails = true

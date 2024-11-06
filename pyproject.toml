@@ -14,6 +14,18 @@ anthropic = "^0.36.2"
 streamlit = "^1.39.0"
 python-dotenv = "^1.0.1"
 hume = "^0.7.0"
+streamlit-evi-chat = {version = "0.0.4", source = "test-pypi"}
+
+
+[[tool.poetry.source]]
+name = "test-pypi"
+url = "https://test.pypi.org/simple/"
+priority = "supplemental"
+
+
+[[tool.poetry.source]]
+name = "PyPI"
+priority = "primary"
 
 [tool.pyright]
 # https://github.com/microsoft/pyright/blob/main/docs/configuration.md
