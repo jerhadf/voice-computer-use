@@ -14,7 +14,7 @@ from anthropic.types.beta import (
     BetaToolParam,
 )
 
-from computer_use_demo.state import State, to_beta_message_param
+from computer_use_demo.state import State, group_tool_message_params, to_beta_message_param
 
 from .tools import BashTool, ComputerTool, EditTool, ToolCollection
 
@@ -68,10 +68,10 @@ def phone_anthropic(
         f"{SYSTEM_PROMPT}{' ' + system_prompt_suffix if system_prompt_suffix else ''}"
     )
 
-    messages = [x for x in [
+    messages = group_tool_message_params([x for x in [
                 to_beta_message_param(message)
                 for message in state.demo_events
-            ] if x]
+            ] if x])
     tools = cast(list[BetaToolParam],
                        tool_collection.to_params())
 
