@@ -56,53 +56,11 @@ SYSTEM_PROMPT = f"""<SYSTEM_CAPABILITY>
 * When viewing a webpage, first use your computer tool to view it and explore it.  But, if there is a lot of text on that page, instead curl the html of that page to a file on disk and then using your StrReplaceEditTool to view the contents in plain text.
 </IMPORTANT>"""
 
-
-# This is just for getting debugging output that isn't cluttered with the bytes of images
-def truncate_data_field(obj, visited=None):
-    if visited is None:
-        visited = set()
-
-    obj_id = id(obj)
-    if obj_id in visited:
-        return obj  # Avoid revisiting objects
-
-    # Mark the current object as visited
-    visited.add(obj_id)
-
-    if isinstance(obj, dict):
-        return {
-            key:
-            "<data>" if key == "data" else truncate_data_field(value, visited)
-            for key, value in obj.items()
-        }
-    elif isinstance(obj, list):
-        return [truncate_data_field(item, visited) for item in obj]
-    elif isinstance(obj, tuple):
-        return tuple(truncate_data_field(item, visited) for item in obj)
-    elif isinstance(obj, set):
-        return {truncate_data_field(item, visited) for item in obj}
-    elif hasattr(obj, "__dict__") and not isinstance(
-            obj, (str, int, float, bool)):  # For mutable class instances only
-        new_obj = deepcopy(
-            obj
-        )  # Make a deep copy of the object to avoid modifying the original
-        visited.add(id(new_obj))
-        for key, value in new_obj.__dict__.items():
-            if key == "data":
-                setattr(new_obj, key, "<data>")
-            else:
-                setattr(new_obj, key, truncate_data_field(value, visited))
-        return new_obj
-    else:
-        return obj
-
-
 def phone_anthropic(
     *,
     state: State,
     tool_collection: ToolCollection,
     model: str,
-    provider: APIProvider,
     system_prompt_suffix: str,
     api_key: str,
     only_n_most_recent_images: int | None,
@@ -111,13 +69,6 @@ def phone_anthropic(
     system = (
         f"{SYSTEM_PROMPT}{' ' + system_prompt_suffix if system_prompt_suffix else ''}"
     )
-    # if only_n_most_recent_images:
-    #     _maybe_filter_to_n_most_recent_images(state.messages,
-    #                                           only_n_most_recent_images)
-
-    # we use raw_response to provide debug information to streamlit. Your
-    # implementation may be able call the SDK directly with:
-    # `response = client.messages.create(...)` instead.
 
     messages = [x for x in [
                 to_beta_message_param(message)

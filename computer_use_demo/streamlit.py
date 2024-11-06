@@ -96,21 +96,6 @@ async def main():
     st.markdown(f"Cursor: {state.anthropic_api_cursor}")
     for chat_event in state.messages:
         _render_chat_event(chat_event)
-        # if isinstance(message.content, str):
-        #     _render_message(message.role, message.content)
-        # elif isinstance(message.content, list):
-        #     for block in message.content:
-        #         # the tool result we send back to the Anthropic API isn't sufficient to render all details,
-        #         # so we store the tool use responses
-        #         if isinstance(block, dict) and block["type"] == "tool_result":
-        #             _render_message(
-        #                 Sender.TOOL,
-        #                 state.tool_use_responses[block["tool_use_id"]])
-        #         else:
-        #             _render_message(
-        #                 message.role,
-        #                 cast(BetaTextBlock | BetaToolUseBlock, block),
-        #             )
 
     for new_message in new_messages:
         state.add_user_input(new_message)
@@ -224,13 +209,6 @@ def _hume_evi_chat(*, state: State,
     return ret
 
 
-# def _tool_output_callback(tool_output: ToolResult, tool_id: str,
-#                           tool_state: dict[str, ToolResult]):
-#     """Handle a tool output by storing it to state and rendering it."""
-#     tool_state[tool_id] = tool_output
-#     _render_message(Sender.TOOL, tool_output)
-
-
 def _chat_event_sender(chat_event: ChatEvent) -> Sender:
     if chat_event['type'] == 'user_input':
         return Sender.USER
@@ -244,7 +222,6 @@ def _chat_event_sender(chat_event: ChatEvent) -> Sender:
         raise ValueError("Unexpected, errors shouldn't have senders")
     else:
         assert_never(chat_event)
-
 
 def _render_chat_event(chat_event: ChatEvent):
     if chat_event['type'] == 'error':
@@ -267,66 +244,10 @@ def _render_chat_event(chat_event: ChatEvent):
             result: ToolResult = chat_event['result']
             if result.output:
                 st.markdown(result.output)
-            # if 'content' not in result:
-            #     return st.markdown("<empty>")
-            # if type(result['content']) == str:
-            #     st.markdown(chat_event['content'])
-            #     return
-            # for content_block in chat_event['content']:
-            #     if isinstance(content_block, str):
-            #         st.markdown(content_block)
-            #         continue
-            #     if content_block['type'] == 'text':
-            #         st.markdown(content_block['text'])
-            #         continue
-            #     if content_block['type'] == 'image':
-            #         if HIDE_IMAGES:
-            #             continue
-            #         data = content_block['source']['data']
-            #         if isinstance(data, str):
-            #             st.image(base64.b64decode(data))
-            #         else:
-            #             raise ValueError("Unexpected: all images in this demo should have base64 data inline as a string")
-            #         continue
-            #     else:
-            #         assert_never(content_block)
-
-
-def _render_message(
-    sender: Sender | Literal["assistant"],
-    message: str | BetaTextBlock | BetaToolUseBlock | ToolResult,
-):
-    """Convert input from the user or output from the agent to a streamlit message."""
-    # streamlit's hotreloading breaks isinstance checks, so we need to check for class names
-    is_tool_result = not isinstance(
-        message, str) and (isinstance(message, ToolResult)
-                           or message.__class__.__name__ == "ToolResult"
-                           or message.__class__.__name__ == "CLIResult")
-    if not message or (is_tool_result and HIDE_IMAGES
-                       and not hasattr(message, "error")
-                       and not hasattr(message, "output")):
-        return
-    with st.chat_message(sender):
-        if is_tool_result:
-            message = cast(ToolResult, message)
-            if message.output:
-                if message.__class__.__name__ == "CLIResult":
-                    st.code(message.output)
-                else:
-                    st.markdown(message.output)
-            if message.error:
-                st.error(message.error)
-            if message.base64_image and not HIDE_IMAGES:
-                st.image(base64.b64decode(message.base64_image))
-        elif isinstance(message, BetaTextBlock) or isinstance(
-                message, TextBlock):
-            st.write(message.text)
-        elif isinstance(message, BetaToolUseBlock) or isinstance(
-                message, ToolUseBlock):
-            st.code(f"Tool Use: {message.name}\nInput: {message.input}")
-        else:
-            st.markdown(message)
-
+            if result.base64_image:
+                st.image(base64.b64decode(result.base64_image))
+            if result.error:
+                st.error(result.error)
 
 if __name__ == "__main__":
     asyncio.run(main())
