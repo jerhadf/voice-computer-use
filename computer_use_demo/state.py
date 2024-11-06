@@ -157,15 +157,15 @@ class State:
 
     def add_user_input(self, text: str):
         message: DemoEvent = {"type": "user_input", "text": text}
-        self._session_state.messages.append(message)
+        self._session_state.demo_events.append(message)
 
     def add_assistant_output(self, text: str):
         message: DemoEvent = {"type": "assistant_output", "text": text}
-        self._session_state.messages.append(message)
+        self._session_state.demo_events.append(message)
 
     def add_error(self, error: Any):
         message: DemoEvent = {"type": "error", "error": error}
-        self._session_state.messages.append(message)
+        self._session_state.demo_events.append(message)
 
     def add_tool_use(self, *, id: str, input: dict[str, Any], name: str):
         message: DemoEvent = {
@@ -174,7 +174,7 @@ class State:
             "name": name,
             "type": "tool_use"
         }
-        self._session_state.messages.append(message)
+        self._session_state.demo_events.append(message)
 
     def add_tool_result(self, tool_result: ToolResult, tool_use_id: str):
         message: DemoEvent = {
@@ -182,7 +182,7 @@ class State:
             "result": tool_result,
             "tool_use_id": tool_use_id
         }
-        self._session_state.messages.append(message)
+        self._session_state.demo_events.append(message)
 
     @property
     def anthropic_response_pending_tool_use(self) -> Optional[BetaMessage]:
