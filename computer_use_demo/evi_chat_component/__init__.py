@@ -9,33 +9,43 @@ _component_func = components.declare_component(
     # Pass `url` here to tell Streamlit that the component will be served
     # by the local dev server that you run via `npm run start`.
     # (This is useful while your component is in development.)
-    url="http://localhost:3001",
-)
+    #url="http://localhost:3001",
+    path="./computer_use_demo/evi_chat_component/frontend/build")
+
 
 class MessageResult(TypedDict):
     type: Literal['message']
     message: Any
+
+
 class ClosedResult(TypedDict):
     type: Literal['closed']
+
+
 class OpenedResult(TypedDict):
     type: Literal['opened']
+
+
 class ErrorResult(TypedDict):
     type: Literal['error']
     error: Any
 
+
 Result = Union[MessageResult, ClosedResult, OpenedResult, ErrorResult]
 
-def chat(*,
-        hume_api_key: str,
-        muted: bool = False,
-        assistant_paused: bool=False,
-        assistant_audio_muted=False,
-        user_input_message: Optional[str]=None,
-        assistant_input_message: Optional[str]=None,
-        session_settings_message: Optional[Any]=None,
-        tool_response_message: Optional[Any]=None,
-        tool_error_message: Optional[Any]=None,
-        key=None,
+
+def chat(
+    *,
+    hume_api_key: str,
+    muted: bool = False,
+    assistant_paused: bool = False,
+    assistant_audio_muted=False,
+    user_input_message: Optional[str] = None,
+    assistant_input_message: Optional[str] = None,
+    session_settings_message: Optional[Any] = None,
+    tool_response_message: Optional[Any] = None,
+    tool_error_message: Optional[Any] = None,
+    key=None,
 ) -> List[Result]:
     component_value = _component_func(
         hume_api_key=hume_api_key,
@@ -48,7 +58,6 @@ def chat(*,
         tool_response_message=tool_response_message,
         tool_error_message=tool_error_message,
         key=key,
-        default=None
-    )
+        default=None)
 
     return component_value
