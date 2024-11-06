@@ -118,27 +118,19 @@ async def phone_anthropic(
     # implementation may be able call the SDK directly with:
     # `response = client.messages.create(...)` instead.
 
-    if provider == APIProvider.ANTHROPIC:
-        try:
-            raw_response = await AsyncAnthropic(
-                api_key=api_key).beta.messages.with_raw_response.create(
-                    max_tokens=max_tokens,
-                    messages=[x for x in [
-                        to_beta_message_param(message)
-                        for message in state.messages
-                    ] if x],
-                    model=model,
-                    system=system,
-                    tools=cast(list[BetaToolParam],
-                               tool_collection.to_params()),
-                    extra_headers={"anthropic-beta": BETA_FLAG},
-                )
-        except Exception as e:
-            st.error(e)
-            raise e
-    else:
-        st.error("Unexpected provider")
-        raise ValueError(f"Unexpected provider: {provider}")
+    raw_response = await AsyncAnthropic(
+        api_key=api_key).beta.messages.with_raw_response.create(
+            max_tokens=max_tokens,
+            messages=[x for x in [
+                to_beta_message_param(message)
+                for message in state.messages
+            ] if x],
+            model=model,
+            system=system,
+            tools=cast(list[BetaToolParam],
+                       tool_collection.to_params()),
+            extra_headers={"anthropic-beta": BETA_FLAG},
+        )
 
     response = raw_response.parse()
 
@@ -229,16 +221,19 @@ async def iterate_sampling_loop(
         if message['type'] == 'tool_result':
             state.anthropic_api_cursor += 1
             print(f"Making a request to anthropic")
-            await phone_anthropic(
-                state=state,
-                tool_collection=tool_collection,
-                model=model,
-                provider=provider,
-                system_prompt_suffix=system_prompt_suffix,
-                api_key=api_key,
-                only_n_most_recent_images=only_n_most_recent_images,
-                max_tokens=max_tokens,
-            )
+            try:
+                await phone_anthropic(
+                    state=state,
+                    tool_collection=tool_collection,
+                    model=model,
+                    provider=provider,
+                    system_prompt_suffix=system_prompt_suffix,
+                    api_key=api_key,
+                    only_n_most_recent_images=only_n_most_recent_images,
+                    max_tokens=max_tokens,
+                )
+            except Exception as e:
+                state.add_error(e)
             print(f"The call to anthropic has completed. There are now {len(state.messages)} messages and the cursor is at {state.anthropic_api_cursor}. Yielding control...")
             return False
         if message['type'] == 'assistant_output':

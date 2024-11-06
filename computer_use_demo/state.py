@@ -165,6 +165,10 @@ class State:
         message: ChatEvent = {"type": "assistant_output", "text": text}
         self._session_state.messages.append(message)
 
+    def add_error(self, error: Any):
+        message: ChatEvent = {"type": "error", "error": error}
+        self._session_state.messages.append(message)
+
     def add_tool_use(self, *, id: str, input: dict[str, Any], name: str):
         message: ChatEvent = {
             "id": id,
