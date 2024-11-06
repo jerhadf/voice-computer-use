@@ -165,10 +165,12 @@ async def use_tools(
     is_done = True
     for content_block in response.content:
         if content_block.type == "tool_use":
+            print("Running tool collection...")
             result = await tool_collection.run(
                 name=content_block.name,
                 tool_input=cast(dict[str, Any], content_block.input),
             )
+            print("Adding tool result...")
             state.add_tool_result(result, content_block.id)
             is_done = False
 
@@ -178,31 +180,36 @@ async def use_tools(
 async def iterate_sampling_loop(
     *,
     state: State,
-    anthropic_response_pending_tool_use: Optional[BetaMessage],
     model: str,
     provider: APIProvider,
     system_prompt_suffix: str,
     api_key: str,
     only_n_most_recent_images: int | None = None,
     max_tokens: int = 4096,
-) -> Optional[BetaMessage]:
+) -> bool:
     """
     Agentic sampling loop for the assistant/tool interaction of computer use.
     """
+    if len(messages) <= state.anthropic_api_cursor:
+        return True
+
+    unprocessed_messages = state.messages[state.anthropic_api_cursor:]
+
+    for message in unprocessed_messages:
     tool_collection = ToolCollection(
         ComputerTool(),
         BashTool(),
         EditTool(),
     )
 
-    is_done = False
-    if anthropic_response_pending_tool_use:
-        is_done = await use_tools(state=state,
-                                  tool_collection=tool_collection,
-                                  response=anthropic_response_pending_tool_use)
+    
 
-        if is_done:
-            return None
+    is_done = await use_tools(state=state,
+                              tool_collection=tool_collection,
+                              response=anthropic_response_pending_tool_use)
+
+    if is_done:
+        return None
 
     result = await phone_anthropic(
         state=state,

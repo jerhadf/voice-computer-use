@@ -1,5 +1,5 @@
 from typing import Dict, Iterable, List, Literal, Never, Optional, TypedDict, assert_never
-from anthropic.types.beta import BetaMessage, BetaMessageParam, BetaToolResultBlockParam  
+from anthropic.types.beta import BetaMessage, BetaMessageParam, BetaToolResultBlockParam
 from streamlit.runtime.state import SessionStateProxy
 import asyncio
 import streamlit as st
@@ -13,13 +13,16 @@ from anthropic.types.beta import (
     BetaToolResultBlockParam,
 )
 
+
 class UserInputEvent(TypedDict):
     type: Literal['user_input']
     text: str
 
+
 class AssistantOutputEvent(TypedDict):
     type: Literal['assistant_output']
     text: str
+
 
 class ToolUseEvent(TypedDict):
     id: str
@@ -27,17 +30,21 @@ class ToolUseEvent(TypedDict):
     name: str
     type: Literal['tool_use']
 
+
 class ToolResultEvent(TypedDict):
     type: Literal['tool_result']
     result: ToolResult
     tool_use_id: str
 
+
 ChatEvent = UserInputEvent | AssistantOutputEvent | ToolUseEvent | ToolResultEvent
+
 
 def _maybe_prepend_system_tool_result(result: ToolResult, result_text: str):
     if result.system:
         result_text = f"<system>{result.system}</system>\n{result_text}"
     return result_text
+
 
 def _make_api_tool_result(result: ToolResult,
                           tool_use_id: str) -> BetaToolResultBlockParam:
@@ -73,33 +80,44 @@ def _make_api_tool_result(result: ToolResult,
         "is_error": is_error,
     }
 
+
 def to_beta_message_param(event: ChatEvent) -> BetaMessageParam:
     if event['type'] == 'user_input':
         return {
-            "content": [{"type": "text", "text": event["text"]}],
+            "content": [{
+                "type": "text",
+                "text": event["text"]
+            }],
             "role": "user"
         }
     elif event['type'] == 'assistant_output':
         return {
-            "content": [{"type": "text", "text": event["text"]}],
+            "content": [{
+                "type": "text",
+                "text": event["text"]
+            }],
             "role": "assistant"
         }
     elif event['type'] == 'tool_use':
         return {
-            "content": [{"type": "tool_use", "id": event["id"], "input": event["input"], "name": event["name"]}],
-            "role": "assistant"
+            "content": [{
+                "type": "tool_use",
+                "id": event["id"],
+                "input": event["input"],
+                "name": event["name"]
+            }],
+            "role":
+            "assistant"
         }
     elif event['type'] == 'tool_result':
         block = _make_api_tool_result(event["result"], event["tool_use_id"])
-        return {
-            "content": [block],
-            "role": "user"
-        }
+        return {"content": [block], "role": "user"}
     assert_never(event)
 
 
 class State:
     _session_state: SessionStateProxy
+
     def __init__(self, session_state: SessionStateProxy):
         self._session_state = session_state
 
@@ -121,6 +139,8 @@ class State:
             session_state.anthropic_response_pending_tool_use = None
         if 'evi_chat_cursor' not in session_state:
             session_state.evi_chat_cursor = 0
+        if 'anthropic_api_cursor' not in session_state:
+            session_state.anthropic_api_cursor = 0
 
     @property
     def messages(self) -> Iterable[ChatEvent]:
@@ -156,13 +176,13 @@ class State:
         }
         self._session_state.messages.append(message)
 
-
     @property
     def anthropic_response_pending_tool_use(self) -> Optional[BetaMessage]:
         return self._session_state.anthropic_response_pending_tool_use
-    
+
     @anthropic_response_pending_tool_use.setter
-    def anthropic_response_pending_tool_use(self, value: Optional[BetaMessage]):
+    def anthropic_response_pending_tool_use(self,
+                                            value: Optional[BetaMessage]):
         self._session_state.anthropic_response_pending_tool_use = value
 
     @property
@@ -188,3 +208,10 @@ class State:
     def evi_chat_cursor(self, value: int):
         self._session_state.evi_chat_cursor = value
 
+    @property
+    def anthropic_api_cursor(self) -> int:
+        return self._session_state.anthropic_api_cursor
+
+    @anthropic_api_cursor.setter
+    def anthropic_api_cursor(self, value: int):
+        self._session_state.anthropic_api_cursor = value

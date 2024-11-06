@@ -74,7 +74,6 @@ async def main():
             "firefox")
 
     State.setup_state(st.session_state)
-    print("Got past state setup")
 
     state = State(st.session_state)
 
@@ -91,8 +90,8 @@ async def main():
 
     anthropic_response_pending_tool_use = state.anthropic_response_pending_tool_use
 
-
-    new_messages = _hume_evi_chat(user_input_message=user_input_message, state=state)
+    new_messages = _hume_evi_chat(user_input_message=user_input_message,
+                                  state=state)
 
     st.code(state.messages)
     for chat_event in state.messages:
@@ -135,18 +134,16 @@ async def main():
     with st.spinner("Running Agent..."):
         # run the agent sampling loop with the newest message
 
-        result = await iterate_sampling_loop(
+        is_done = await iterate_sampling_loop(
             state=state,
-            anthropic_response_pending_tool_use=
-            anthropic_response_pending_tool_use,
             system_prompt_suffix=CUSTOM_SYSTEM_PROMPT,
             model=MODEL,
             provider=PROVIDER,
             api_key=ANTHROPIC_API_KEY,
             only_n_most_recent_images=ONLY_N_MOST_RECENT_IMAGES)
-        state.anthropic_response_pending_tool_use = result
 
-    st.rerun()
+        if not is_done:
+            st.rerun()
 
 
 def validate_auth(provider: APIProvider, api_key: str | None):
@@ -241,7 +238,8 @@ def _hume_extract_speech_from_message(
         return cast(str, message)
 
 
-def _hume_evi_chat(*, state: State, user_input_message: Optional[str]) -> List[str]:
+def _hume_evi_chat(*, state: State,
+                   user_input_message: Optional[str]) -> List[str]:
     """
     Renders the EVI chat, handles commands to EVI that are passed in through
     the session state, and acts on messages received from EVI. Returns a string
