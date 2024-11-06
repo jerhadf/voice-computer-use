@@ -55,15 +55,17 @@ class Sender(StrEnum):
     BOT = "assistant"
     TOOL = "tool"
 
+
 PROVIDER = APIProvider.ANTHROPIC
-MODEL=PROVIDER_TO_DEFAULT_MODEL_NAME[PROVIDER]
+MODEL = PROVIDER_TO_DEFAULT_MODEL_NAME[PROVIDER]
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 CUSTOM_SYSTEM_PROMPT = ""
 ONLY_N_MOST_RECENT_IMAGES = 10
 HIDE_IMAGES = False
+
+
 # session_state is untyped, this is a type-safe wrapper around
 # session state to make it a little easier to manage and refactor
-
 async def main():
     """Render loop for streamlit"""
     print("Rerunning...")
@@ -81,8 +83,7 @@ async def main():
     st.title("Computer Control Interface")
 
     if auth_error := validate_auth(PROVIDER, ANTHROPIC_API_KEY):
-        st.warning(
-            f"Please resolve the following auth issue:\n\n{auth_error}")
+        st.warning(f"Please resolve the following auth issue:\n\n{auth_error}")
 
     # Continue with rest of Streamlit UI
     user_input_message = st.chat_input(
@@ -90,9 +91,10 @@ async def main():
 
     anthropic_response_pending_tool_use = state.anthropic_response_pending_tool_use
 
-    new_message = _hume_evi_chat(user_input_message=user_input_message, state=state)
+    new_message = _hume_evi_chat(user_input_message=user_input_message,
+                                 state=state)
 
-    # render past chats
+    st.code(state.messages)
     for chat_event in state.messages:
         _render_chat_event(chat_event)
         # if isinstance(message.content, str):
@@ -120,7 +122,8 @@ async def main():
     if not most_recent_message:
         return
 
-    if most_recent_message['type'] != 'user_input' and not anthropic_response_pending_tool_use:
+    if most_recent_message[
+            'type'] != 'user_input' and not anthropic_response_pending_tool_use:
         # we don't have a user message to respond to, exit early
         return
 
@@ -239,7 +242,8 @@ def _hume_extract_speech_from_message(
         return cast(str, message)
 
 
-def _hume_evi_chat(*, state: State, user_input_message: Optional[str]) -> Optional[str]:
+def _hume_evi_chat(*, state: State,
+                   user_input_message: Optional[str]) -> Optional[str]:
     """
     Renders the EVI chat, handles commands to EVI that are passed in through
     the session state, and acts on messages received from EVI. Returns a string
@@ -300,6 +304,7 @@ def _chat_event_sender(chat_event: ChatEvent) -> Sender:
     else:
         assert_never(chat_event)
 
+
 def _render_chat_event(chat_event: ChatEvent):
     sender = _chat_event_sender(chat_event)
     with st.chat_message(sender):
@@ -310,7 +315,9 @@ def _render_chat_event(chat_event: ChatEvent):
             st.markdown(chat_event['text'])
             return
         if chat_event['type'] == 'tool_use':
-            st.code(f"Tool Use: {chat_event['name']}\nInput: {chat_event['input']}")
+            st.code(
+                f"Tool Use: {chat_event['name']}\nInput: {chat_event['input']}"
+            )
             return
         if chat_event['type'] == 'tool_result':
             result: ToolResult = chat_event['result']
@@ -339,6 +346,7 @@ def _render_chat_event(chat_event: ChatEvent):
             #         continue
             #     else:
             #         assert_never(content_block)
+
 
 def _render_message(
     sender: Sender | Literal["assistant"],

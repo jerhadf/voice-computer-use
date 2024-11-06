@@ -18,7 +18,7 @@ from anthropic.types.beta import (
 
 from computer_use_demo.state import State, to_beta_message_param
 
-from .tools import BashTool, ComputerTool, EditTool, ToolCollection 
+from .tools import BashTool, ComputerTool, EditTool, ToolCollection
 
 BETA_FLAG = "computer-use-2024-10-22"
 
@@ -27,6 +27,7 @@ class APIProvider(StrEnum):
     ANTHROPIC = "anthropic"
     BEDROCK = "bedrock"
     VERTEX = "vertex"
+
 
 PROVIDER_TO_DEFAULT_MODEL_NAME: dict[APIProvider, str] = {
     APIProvider.ANTHROPIC: "claude-3-5-sonnet-20241022",
@@ -120,18 +121,19 @@ async def phone_anthropic(
 
     if provider == APIProvider.ANTHROPIC:
         try:
-            print("Awaiting response from Anthropic messages.create...")
             raw_response = await AsyncAnthropic(
                 api_key=api_key).beta.messages.with_raw_response.create(
                     max_tokens=max_tokens,
-                    messages=[to_beta_message_param(message) for message in state.messages],
+                    messages=[
+                        to_beta_message_param(message)
+                        for message in state.messages
+                    ],
                     model=model,
                     system=system,
                     tools=cast(list[BetaToolParam],
                                tool_collection.to_params()),
                     extra_headers={"anthropic-beta": BETA_FLAG},
                 )
-            print("Completed response from Anthropic messages.create...")
         except Exception as e:
             st.error(e)
             raise e
@@ -213,6 +215,3 @@ async def iterate_sampling_loop(
         max_tokens=max_tokens,
     )
     return result
-
-
-
