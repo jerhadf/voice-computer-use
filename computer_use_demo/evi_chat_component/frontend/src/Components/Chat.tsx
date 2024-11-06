@@ -130,4 +130,4 @@ class StreamlitWrapped extends StreamlitComponentBase<StreamlitArgs> {
 }
 
 
-export default withStreamlitConnection(Chat)
+export default withStreamlitConnection(StreamlitWrapped)

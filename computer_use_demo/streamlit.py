@@ -265,6 +265,7 @@ def _hume_evi_chat(*, state: State, user_input_message: Optional[str]) -> List[s
 
     if state.evi_chat_cursor < len(events):
         new_events = events[state.evi_chat_cursor:]
+        state.evi_chat_cursor = len(events)
 
     st.markdown(new_events)
 
