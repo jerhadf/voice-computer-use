@@ -13,6 +13,7 @@ from anthropic.types.beta import (
     BetaMessage,
     BetaToolParam,
 )
+from pydantic.utils import assert_never
 
 from computer_use_demo.state import State, group_tool_message_params, to_beta_message_param
 
@@ -54,6 +55,7 @@ SYSTEM_PROMPT = f"""<SYSTEM_CAPABILITY>
 * When viewing a webpage, first use your computer tool to view it and explore it.  But, if there is a lot of text on that page, instead curl the html of that page to a file on disk and then using your StrReplaceEditTool to view the contents in plain text.
 </IMPORTANT>"""
 
+
 def phone_anthropic(
     *,
     state: State,
@@ -68,12 +70,11 @@ def phone_anthropic(
         f"{SYSTEM_PROMPT}{' ' + system_prompt_suffix if system_prompt_suffix else ''}"
     )
 
-    messages = group_tool_message_params([x for x in [
-                to_beta_message_param(message)
-                for message in state.demo_events
-            ] if x])
-    tools = cast(list[BetaToolParam],
-                       tool_collection.to_params())
+    messages = group_tool_message_params([
+        x for x in
+        [to_beta_message_param(message) for message in state.demo_events] if x
+    ])
+    tools = cast(list[BetaToolParam], tool_collection.to_params())
 
     print("starting anthropic call...")
     # The problem is right here. Apparently, in the middle of while this is going on, Streamlit reruns
@@ -140,7 +141,7 @@ async def iterate_sampling_loop(
     """
     Agentic sampling loop for the assistant/tool interaction of computer use.
     """
-    
+
     tool_collection = ToolCollection(
         ComputerTool(),
         BashTool(),
@@ -149,38 +150,38 @@ async def iterate_sampling_loop(
 
     unprocessed_messages = state.demo_events[state.anthropic_api_cursor:]
 
-    print(f"There have been {len(state.demo_events)} messages, the cursor is at {state.anthropic_api_cursor}. There are {len(unprocessed_messages)} unprocessed messages.")
+    print(
+        f"There have been {len(state.demo_events)} messages, the cursor is at {state.anthropic_api_cursor}. There are {len(unprocessed_messages)} unprocessed messages."
+    )
     for message in unprocessed_messages:
         print(f"Processing message: {message['type']}")
         if message['type'] == 'user_input':
-            state.anthropic_api_cursor += 1
             print(f"Making a request to anthropic")
             phone_anthropic(
-                    state=state,
-                    tool_collection=tool_collection,
-                    model=model,
-                    system_prompt_suffix=system_prompt_suffix,
-                    api_key=api_key,
-                    only_n_most_recent_images=only_n_most_recent_images,
-                    max_tokens=max_tokens,
-                )
-            print(f"The call to anthropic has completed. There are now {len(state.demo_events)} messages and the cursor is at {state.anthropic_api_cursor}. Yielding control...")
+                state=state,
+                tool_collection=tool_collection,
+                model=model,
+                system_prompt_suffix=system_prompt_suffix,
+                api_key=api_key,
+                only_n_most_recent_images=only_n_most_recent_images,
+                max_tokens=max_tokens,
+            )
+            state.anthropic_api_cursor += 1
+            print(
+                f"The call to anthropic has completed. There are now {len(state.demo_events)} messages and the cursor is at {state.anthropic_api_cursor}. Yielding control..."
+            )
             return False
         if message['type'] == 'tool_use':
-            state.anthropic_api_cursor += 1
             print(f"Running tools...")
-            result = await tool_collection.run(
-                name=message['name'],
-                tool_input=message['input']
-            )
+            result = await tool_collection.run(name=message['name'],
+                                               tool_input=message['input'])
             state.add_tool_result(result, message['id'])
-            print(f"Tools have run. There are now {len(state.demo_events)} messages and the cursor is at {state.anthropic_api_cursor}. Yielding control...")
+            state.anthropic_api_cursor += 1
+            print(
+                f"Tools have run. There are now {len(state.demo_events)} messages and the cursor is at {state.anthropic_api_cursor}. Yielding control..."
+            )
             return False
         if message['type'] == 'tool_result':
-            print("sleeping gratuitously for 2 secords")
-            time.sleep(2)
-            print("done sleeping")
-            state.anthropic_api_cursor += 1
             print(f"Making a request to anthropic")
             try:
                 phone_anthropic(
@@ -192,14 +193,28 @@ async def iterate_sampling_loop(
                     only_n_most_recent_images=only_n_most_recent_images,
                     max_tokens=max_tokens,
                 )
+                state.anthropic_api_cursor += 1
             except Exception as e:
                 state.add_error(e)
-            print(f"The call to anthropic has completed. There are now {len(state.demo_events)} messages and the cursor is at {state.anthropic_api_cursor}. Yielding control...")
+            print(
+                f"The call to anthropic has completed. There are now {len(state.demo_events)} messages and the cursor is at {state.anthropic_api_cursor}. Yielding control..."
+            )
             return False
         if message['type'] == 'assistant_output':
             state.anthropic_api_cursor += 1
-            print(f"Advanced the cursor. There are now {len(state.demo_events)} messages and the cursor is at {state.anthropic_api_cursor}. Yielding control...")
+            print(
+                f"Advanced the cursor. There are now {len(state.demo_events)} messages and the cursor is at {state.anthropic_api_cursor}. Yielding control..."
+            )
             return False
+        if message['type'] == 'error':
+            state.add_error(message['error'])
+            state.anthropic_api_cursor += 1
+            print(
+                f"An error has occurred. There are now {len(state.demo_events)} messages and the cursor is at {state.anthropic_api_cursor}. Yielding control..."
+            )
+            return False
+
+        assert_never(message, "Should not get here")
 
     print(f"There are no unprocessed messages. Waiting for user input...")
     return True
