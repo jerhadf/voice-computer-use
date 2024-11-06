@@ -201,11 +201,14 @@ async def iterate_sampling_loop(
     unprocessed_messages = state.messages[state.anthropic_api_cursor:]
 
     pending_tool_use = []
+    print(f"There have been {len(state.messages)} messages, the cursor is at {state.anthropic_api_cursor}. There are {len(unprocessed_messages)} unprocessed messages.")
     for message in unprocessed_messages:
+        print(f"Processing message: {message['type']}")
         if message['type'] == 'user_input':
             if pending_tool_use:
                 st.error("Unexpected... got user input with pending tool use")
             state.anthropic_api_cursor += 1
+            print(f"Making a request to anthropic")
             await phone_anthropic(
                     state=state,
                     tool_collection=tool_collection,
@@ -216,17 +219,21 @@ async def iterate_sampling_loop(
                     only_n_most_recent_images=only_n_most_recent_images,
                     max_tokens=max_tokens,
                 )
+            print(f"The call to anthropic has completed. There are now {len(state.messages)} messages and the cursor is at {state.anthropic_api_cursor}. Yielding control...")
             return False
         if message['type'] == 'tool_use':
             state.anthropic_api_cursor += 1
+            print(f"Running tools...")
             result = await tool_collection.run(
                 name=message['name'],
                 tool_input=message['input']
             )
             state.add_tool_result(result, message['id'])
+            print(f"Tools have run. There are now {len(state.messages)} messages and the cursor is at {state.anthropic_api_cursor}. Yielding control...")
             return False
         if message['type'] == 'tool_result':
             state.anthropic_api_cursor += 1
+            print(f"Making a request to anthropic")
             await phone_anthropic(
                 state=state,
                 tool_collection=tool_collection,
@@ -237,9 +244,12 @@ async def iterate_sampling_loop(
                 only_n_most_recent_images=only_n_most_recent_images,
                 max_tokens=max_tokens,
             )
+            print(f"The call to anthropic has completed. There are now {len(state.messages)} messages and the cursor is at {state.anthropic_api_cursor}. Yielding control...")
             return False
         if message['type'] == 'assistant_output':
             state.anthropic_api_cursor += 1
+            print(f"Advanced the cursor. There are now {len(state.messages)} messages and the cursor is at {state.anthropic_api_cursor}. Yielding control...")
             return False
 
+    print(f"There are no unprocessed messages. Waiting for user input...")
     return True
