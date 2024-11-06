@@ -261,7 +261,7 @@ def _hume_evi_chat(*, state: State, user_input_message: Optional[str]) -> List[s
         hume_api_key=hume_api_key,
         assistant_input_message=_hume_get_assistant_input_message(state),
         assistant_paused=state.evi_assistant_paused,
-        user_input_message=user_input_message)
+        user_input_message=user_input_message) or []
 
     if state.evi_chat_cursor < len(events):
         new_events = events[state.evi_chat_cursor:]
