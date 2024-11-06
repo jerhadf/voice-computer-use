@@ -1,8 +1,6 @@
-from typing import Any, Dict, Iterable, List, Literal, Never, Optional, TypedDict, assert_never
+from typing import Any, Dict, List, Literal, Optional, TypedDict, assert_never
 from anthropic.types.beta import BetaMessage, BetaMessageParam, BetaToolResultBlockParam
 from streamlit.runtime.state import SessionStateProxy
-import asyncio
-import streamlit as st
 
 from computer_use_demo.tools import ToolResult
 
@@ -41,7 +39,7 @@ class ErrorEvent(TypedDict):
     error: Any
 
 
-ChatEvent = UserInputEvent | AssistantOutputEvent | ToolUseEvent | ToolResultEvent | ErrorEvent
+DemoEvent = UserInputEvent | AssistantOutputEvent | ToolUseEvent | ToolResultEvent | ErrorEvent
 
 
 def _maybe_prepend_system_tool_result(result: ToolResult, result_text: str):
@@ -85,7 +83,7 @@ def _make_api_tool_result(result: ToolResult,
     }
 
 
-def to_beta_message_param(event: ChatEvent) -> Optional[BetaMessageParam]:
+def to_beta_message_param(event: DemoEvent) -> Optional[BetaMessageParam]:
     if event['type'] == 'user_input':
         return {
             "content": [{
@@ -129,8 +127,8 @@ class State:
 
     @staticmethod
     def setup_state(session_state: SessionStateProxy):
-        if "messages" not in session_state:
-            session_state.messages = []
+        if "demo_events" not in session_state:
+            session_state.demo_events = []
         if "responses" not in session_state:
             session_state.responses = {}
         if "tool_use_responses" not in session_state:
@@ -149,28 +147,28 @@ class State:
             session_state.anthropic_api_cursor = 0
 
     @property
-    def messages(self) -> List[ChatEvent]:
-        return self._session_state.messages
+    def demo_events(self) -> List[DemoEvent]:
+        return self._session_state.demo_events
 
-    def last_message(self) -> Optional[ChatEvent]:
-        if len(self._session_state.messages) > 0:
-            return self._session_state.messages[-1]
+    def last_message(self) -> Optional[DemoEvent]:
+        if len(self._session_state.demo_events) > 0:
+            return self._session_state.demo_events[-1]
         return None
 
     def add_user_input(self, text: str):
-        message: ChatEvent = {"type": "user_input", "text": text}
+        message: DemoEvent = {"type": "user_input", "text": text}
         self._session_state.messages.append(message)
 
     def add_assistant_output(self, text: str):
-        message: ChatEvent = {"type": "assistant_output", "text": text}
+        message: DemoEvent = {"type": "assistant_output", "text": text}
         self._session_state.messages.append(message)
 
     def add_error(self, error: Any):
-        message: ChatEvent = {"type": "error", "error": error}
+        message: DemoEvent = {"type": "error", "error": error}
         self._session_state.messages.append(message)
 
     def add_tool_use(self, *, id: str, input: dict[str, Any], name: str):
-        message: ChatEvent = {
+        message: DemoEvent = {
             "id": id,
             "input": input,
             "name": name,
@@ -179,7 +177,7 @@ class State:
         self._session_state.messages.append(message)
 
     def add_tool_result(self, tool_result: ToolResult, tool_use_id: str):
-        message: ChatEvent = {
+        message: DemoEvent = {
             "type": "tool_result",
             "result": tool_result,
             "tool_use_id": tool_use_id

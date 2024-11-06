@@ -5,7 +5,7 @@ _component_func = components.declare_component(
     # We give the component a simple, descriptive name ("my_component"
     # does not fit this bill, so please choose something better for your
     # own component :)
-    "evi",
+    "empathic_voice_chat",
     # Pass `url` here to tell Streamlit that the component will be served
     # by the local dev server that you run via `npm run start`.
     # (This is useful while your component is in development.)
@@ -13,28 +13,28 @@ _component_func = components.declare_component(
     path="./computer_use_demo/evi_chat_component/frontend/build")
 
 
-class MessageResult(TypedDict):
+class MessageEvent(TypedDict):
     type: Literal['message']
     message: Any
 
 
-class ClosedResult(TypedDict):
+class ClosedEvent(TypedDict):
     type: Literal['closed']
 
 
-class OpenedResult(TypedDict):
+class OpenedEvent(TypedDict):
     type: Literal['opened']
 
 
-class ErrorResult(TypedDict):
+class ErrorEvent(TypedDict):
     type: Literal['error']
     error: Any
 
 
-Result = Union[MessageResult, ClosedResult, OpenedResult, ErrorResult]
+ChatEvent = Union[MessageEvent, ClosedEvent, OpenedEvent, ErrorEvent]
 
 
-def chat(
+def empathic_voice_chat(
     *,
     hume_api_key: str,
     muted: bool = False,
@@ -46,7 +46,7 @@ def chat(
     tool_response_message: Optional[Any] = None,
     tool_error_message: Optional[Any] = None,
     key=None,
-) -> List[Result]:
+) -> List[ChatEvent]:
     component_value = _component_func(
         hume_api_key=hume_api_key,
         muted=muted,

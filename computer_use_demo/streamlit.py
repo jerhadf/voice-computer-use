@@ -7,16 +7,12 @@ import base64
 import os
 from enum import StrEnum
 from pathlib import PosixPath
-from typing import List, Literal, Optional, assert_never, cast
+from typing import List, Optional, assert_never
 
 import streamlit as st
-from anthropic.types import (
-    TextBlock, )
-from anthropic.types.beta import BetaTextBlock, BetaToolUseBlock
-from anthropic.types.tool_use_block import ToolUseBlock
 
-from computer_use_demo.state import ChatEvent, State
-from .evi_chat_component import Result as EviEvent, chat as evi_chat
+from computer_use_demo.state import DemoEvent, State
+from .evi_chat_component import ChatEvent as EviEvent, empathic_voice_chat
 
 from computer_use_demo.loop import (
     PROVIDER_TO_DEFAULT_MODEL_NAME,
@@ -87,14 +83,12 @@ async def main():
     user_input_message = st.chat_input(
         "Type or speak a message to control the computer...")
 
-    anthropic_response_pending_tool_use = state.anthropic_response_pending_tool_use
-
     new_messages = _hume_evi_chat(user_input_message=user_input_message,
                                   state=state)
 
-    st.code("\n".join([m.__repr__() for m in state.messages]))
+    st.code("\n".join([m.__repr__() for m in state.demo_events]))
     st.markdown(f"Cursor: {state.anthropic_api_cursor}")
-    for chat_event in state.messages:
+    for chat_event in state.demo_events:
         _render_chat_event(chat_event)
 
     for new_message in new_messages:
@@ -113,11 +107,10 @@ async def main():
             state=state,
             system_prompt_suffix=CUSTOM_SYSTEM_PROMPT,
             model=MODEL,
-            provider=PROVIDER,
             api_key=ANTHROPIC_API_KEY,
             only_n_most_recent_images=ONLY_N_MOST_RECENT_IMAGES)
 
-        if state.anthropic_api_cursor < len(state.messages):
+        if state.anthropic_api_cursor < len(state.demo_events):
             st.rerun()
 
 
@@ -154,7 +147,7 @@ def save_to_storage(filename: str, data: str) -> None:
 
 def _hume_get_assistant_input_message(state: State) -> Optional[str]:
     assistant_messages = [
-        message for message in state.messages
+        message for message in state.demo_events
         if message['type'] == "assistant_output"
     ]
     if not assistant_messages:
@@ -182,7 +175,7 @@ def _hume_evi_chat(*, state: State,
         return []
 
     new_events = []
-    events = evi_chat(
+    events = empathic_voice_chat(
         key="evi_chat",
         hume_api_key=hume_api_key,
         assistant_input_message=_hume_get_assistant_input_message(state),
@@ -209,7 +202,7 @@ def _hume_evi_chat(*, state: State,
     return ret
 
 
-def _chat_event_sender(chat_event: ChatEvent) -> Sender:
+def _chat_event_sender(chat_event: DemoEvent) -> Sender:
     if chat_event['type'] == 'user_input':
         return Sender.USER
     elif chat_event['type'] == 'assistant_output':
@@ -223,7 +216,7 @@ def _chat_event_sender(chat_event: ChatEvent) -> Sender:
     else:
         assert_never(chat_event)
 
-def _render_chat_event(chat_event: ChatEvent):
+def _render_chat_event(chat_event: DemoEvent):
     if chat_event['type'] == 'error':
         st.error(chat_event['error'])
         return
