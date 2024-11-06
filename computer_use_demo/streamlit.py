@@ -7,7 +7,7 @@ import base64
 import os
 from enum import StrEnum
 from pathlib import PosixPath
-from typing import Literal, Optional, assert_never, cast
+from typing import List, Literal, Optional, assert_never, cast
 
 import streamlit as st
 from anthropic.types import (
@@ -91,8 +91,8 @@ async def main():
 
     anthropic_response_pending_tool_use = state.anthropic_response_pending_tool_use
 
-    new_message = _hume_evi_chat(user_input_message=user_input_message,
-                                 state=state)
+
+    new_messages = _hume_evi_chat(user_input_message=user_input_message, state=state)
 
     st.code(state.messages)
     for chat_event in state.messages:
@@ -113,9 +113,8 @@ async def main():
         #                 cast(BetaTextBlock | BetaToolUseBlock, block),
         #             )
 
-    if new_message:
+    for new_message in new_messages:
         state.add_user_input(new_message)
-        _render_message(Sender.USER, new_message)
 
     most_recent_message = state.last_message()
 
@@ -242,8 +241,7 @@ def _hume_extract_speech_from_message(
         return cast(str, message)
 
 
-def _hume_evi_chat(*, state: State,
-                   user_input_message: Optional[str]) -> Optional[str]:
+def _hume_evi_chat(*, state: State, user_input_message: Optional[str]) -> List[str]:
     """
     Renders the EVI chat, handles commands to EVI that are passed in through
     the session state, and acts on messages received from EVI. Returns a string
@@ -255,34 +253,33 @@ def _hume_evi_chat(*, state: State,
 
     if not hume_api_key:
         st.error("Please set HUME_API_KEY environment variable")
-        return None
+        return []
 
-    print("Got evi chat")
-    event = evi_chat(
+    new_events = []
+    events = evi_chat(
         key="evi_chat",
         hume_api_key=hume_api_key,
         assistant_input_message=_hume_get_assistant_input_message(state),
         assistant_paused=state.evi_assistant_paused,
         user_input_message=user_input_message)
 
-    st.markdown(event)
+    if state.evi_chat_cursor < len(events):
+        new_events = events[state.evi_chat_cursor:]
 
-    if not event:
-        return
+    st.markdown(new_events)
 
-    if event['type'] == 'opened':
-        _hume_pause_evi(state)
-        return
+    ret = []
+    for event in new_events:
+        if event['type'] == 'opened':
+            _hume_pause_evi(state)
+            continue
 
-    if event['type'] == 'message':
-        # TODO: event['message'] exists but the type checker is complaining because
-        # the type is wrong
-        message = event['message']
+        if event['type'] == 'message':
+            message = event['message']
+            if message['type'] == 'user_message':
+                ret.append(message['message']['content'])
 
-        if message['type'] == 'user_message':
-            return message['message']['content']
-
-    return None
+    return ret
 
 
 # def _tool_output_callback(tool_output: ToolResult, tool_id: str,

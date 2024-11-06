@@ -1,4 +1,4 @@
-from typing import Any, Literal, Optional, TypedDict, Union
+from typing import Any, List, Literal, Optional, TypedDict, Union
 import streamlit.components.v1 as components
 
 _component_func = components.declare_component(
@@ -36,7 +36,7 @@ def chat(*,
         tool_response_message: Optional[Any]=None,
         tool_error_message: Optional[Any]=None,
         key=None,
-) -> Result:
+) -> List[Result]:
     component_value = _component_func(
         hume_api_key=hume_api_key,
         muted=muted,

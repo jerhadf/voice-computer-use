@@ -74,8 +74,8 @@ const useInteractivity = ({
 const InteractiveChat = (props: ComponentProps) => {
   useInteractivity(props.args);
   return <>
-      <Controls />,
-      <StartCall />
+    <Controls />,
+    <StartCall />
   </>
 }
 type StreamlitArgs = InteractivityProps & {
@@ -83,7 +83,7 @@ type StreamlitArgs = InteractivityProps & {
 }
 
 type VoiceProviderParam = Parameters<typeof VoiceProvider>[0];
-type StreamlitValue = {
+type ChatEvent = {
   type: 'message',
   message: Parameters<NonNullable<VoiceProviderParam['onMessage']>>[0]
 } | {
@@ -95,29 +95,36 @@ type StreamlitValue = {
   error: Parameters<NonNullable<VoiceProviderParam['onError']>>[0]
 }
 
-const setStreamlitValue = (value: StreamlitValue) => {
-  Streamlit.setComponentValue(value)
+const Chat = (props: ComponentProps) => {
+  const [events, setEvents] = React.useState<ChatEvent[]>([]);
+  const addEvent = (event: ChatEvent) => {
+    setEvents([...events, event]);
+  }
+  useEffect(() => {
+    Streamlit.setComponentValue(events);
+  }, [events])
+  return <VoiceProvider
+    auth={{ type: 'apiKey', value: props.args['hume_api_key'] as string }}
+    onMessage={(message) => {
+      addEvent({ type: 'message', message })
+    }}
+    onOpen={() => {
+      addEvent({ type: 'opened' })
+    }}
+    onClose={() => {
+      addEvent({ type: 'closed' })
+    }}
+    onError={(error) => {
+      addEvent({ type: 'error', error })
+    }}>
+    <InteractiveChat {...props} />
+  </VoiceProvider>
 }
 
-class Chat extends StreamlitComponentBase<StreamlitArgs> {
+class StreamlitWrapped extends StreamlitComponentBase<StreamlitArgs> {
   public render = (): ReactNode => {
     return (
-      <VoiceProvider
-        auth={{ type: 'apiKey', value: this.props.args['hume_api_key'] as string }}
-        onMessage={(message) => {
-          setStreamlitValue({ type: 'message', message })
-        }}
-        onOpen={() => {
-          setStreamlitValue({ type: 'opened' })
-        }}
-        onClose={() => {
-          setStreamlitValue({ type: 'closed' })
-        }}
-        onError={(error) => {
-          setStreamlitValue({ type: 'error', error })
-        }}>
-        <InteractiveChat {...this.props} />
-      </VoiceProvider>
+      <Chat {...this.props} />
     )
   }
 }
