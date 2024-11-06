@@ -96,7 +96,7 @@ def truncate_data_field(obj, visited=None):
         return obj
 
 
-async def phone_anthropic(
+def phone_anthropic(
     *,
     state: State,
     tool_collection: ToolCollection,
@@ -118,19 +118,23 @@ async def phone_anthropic(
     # implementation may be able call the SDK directly with:
     # `response = client.messages.create(...)` instead.
 
+    messages = [x for x in [
+                to_beta_message_param(message)
+                for message in state.messages
+            ] if x]
+    tools = cast(list[BetaToolParam],
+                       tool_collection.to_params())
+    print("starting anthropic call...")
     raw_response = Anthropic(
         api_key=api_key).beta.messages.with_raw_response.create(
             max_tokens=max_tokens,
-            messages=[x for x in [
-                to_beta_message_param(message)
-                for message in state.messages
-            ] if x],
+            messages=messages,
             model=model,
             system=system,
-            tools=cast(list[BetaToolParam],
-                       tool_collection.to_params()),
+            tools=tools,
             extra_headers={"anthropic-beta": BETA_FLAG},
         )
+    print("finishing anthropic call...")
 
     response = raw_response.parse()
 
@@ -196,7 +200,7 @@ async def iterate_sampling_loop(
         if message['type'] == 'user_input':
             state.anthropic_api_cursor += 1
             print(f"Making a request to anthropic")
-            await phone_anthropic(
+            phone_anthropic(
                     state=state,
                     tool_collection=tool_collection,
                     model=model,
@@ -222,7 +226,7 @@ async def iterate_sampling_loop(
             state.anthropic_api_cursor += 1
             print(f"Making a request to anthropic")
             try:
-                await phone_anthropic(
+                phone_anthropic(
                     state=state,
                     tool_collection=tool_collection,
                     model=model,
