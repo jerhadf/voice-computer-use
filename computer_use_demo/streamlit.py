@@ -14,7 +14,6 @@ from anthropic.types import (
     TextBlock, )
 from anthropic.types.beta import BetaTextBlock, BetaToolUseBlock
 from anthropic.types.tool_use_block import ToolUseBlock
-from streamlit.runtime.state import SessionStateProxy
 
 from computer_use_demo.state import ChatEvent, State
 from .evi_chat_component import Result as EviEvent, chat as evi_chat

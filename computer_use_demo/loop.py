@@ -6,12 +6,11 @@ import platform
 from copy import deepcopy
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Optional, cast
+from typing import Any, cast
 
 import streamlit as st
 from anthropic import AsyncAnthropic
 from anthropic.types.beta import (
-    BetaContentBlock,
     BetaMessage,
     BetaToolParam,
 )
@@ -147,7 +146,7 @@ async def phone_anthropic(
         if content_block.type == "tool_use":
             state.add_tool_use(
                 id=content_block.id,
-                input=content_block.input,
+                input=cast(dict[str, Any], content_block.input),
                 name=content_block.name,
             )
         elif content_block.type == "text":
@@ -190,35 +189,57 @@ async def iterate_sampling_loop(
     """
     Agentic sampling loop for the assistant/tool interaction of computer use.
     """
-    if len(messages) <= state.anthropic_api_cursor:
+    if len(state.messages) <= state.anthropic_api_cursor:
         return True
 
-    unprocessed_messages = state.messages[state.anthropic_api_cursor:]
-
-    for message in unprocessed_messages:
     tool_collection = ToolCollection(
         ComputerTool(),
         BashTool(),
         EditTool(),
     )
 
-    
+    unprocessed_messages = state.messages[state.anthropic_api_cursor:]
 
-    is_done = await use_tools(state=state,
-                              tool_collection=tool_collection,
-                              response=anthropic_response_pending_tool_use)
+    pending_tool_use = []
+    for message in unprocessed_messages:
+        if message['type'] == 'user_input':
+            if pending_tool_use:
+                st.error("Unexpected... got user input with pending tool use")
+            state.anthropic_api_cursor += 1
+            await phone_anthropic(
+                    state=state,
+                    tool_collection=tool_collection,
+                    model=model,
+                    provider=provider,
+                    system_prompt_suffix=system_prompt_suffix,
+                    api_key=api_key,
+                    only_n_most_recent_images=only_n_most_recent_images,
+                    max_tokens=max_tokens,
+                )
+            return False
+        if message['type'] == 'tool_use':
+            state.anthropic_api_cursor += 1
+            result = await tool_collection.run(
+                name=message['name'],
+                tool_input=message['input']
+            )
+            state.add_tool_result(result, message['id'])
+            return False
+        if message['type'] == 'tool_result':
+            state.anthropic_api_cursor += 1
+            await phone_anthropic(
+                state=state,
+                tool_collection=tool_collection,
+                model=model,
+                provider=provider,
+                system_prompt_suffix=system_prompt_suffix,
+                api_key=api_key,
+                only_n_most_recent_images=only_n_most_recent_images,
+                max_tokens=max_tokens,
+            )
+            return False
+        if message['type'] == 'assistant_output':
+            state.anthropic_api_cursor += 1
+            return False
 
-    if is_done:
-        return None
-
-    result = await phone_anthropic(
-        state=state,
-        tool_collection=tool_collection,
-        model=model,
-        provider=provider,
-        system_prompt_suffix=system_prompt_suffix,
-        api_key=api_key,
-        only_n_most_recent_images=only_n_most_recent_images,
-        max_tokens=max_tokens,
-    )
-    return result
+    return True

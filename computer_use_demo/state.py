@@ -1,4 +1,4 @@
-from typing import Dict, Iterable, List, Literal, Never, Optional, TypedDict, assert_never
+from typing import Any, Dict, Iterable, List, Literal, Never, Optional, TypedDict, assert_never
 from anthropic.types.beta import BetaMessage, BetaMessageParam, BetaToolResultBlockParam
 from streamlit.runtime.state import SessionStateProxy
 import asyncio
@@ -26,7 +26,7 @@ class AssistantOutputEvent(TypedDict):
 
 class ToolUseEvent(TypedDict):
     id: str
-    input: object
+    input: dict[str, Any]
     name: str
     type: Literal['tool_use']
 
@@ -143,7 +143,7 @@ class State:
             session_state.anthropic_api_cursor = 0
 
     @property
-    def messages(self) -> Iterable[ChatEvent]:
+    def messages(self) -> List[ChatEvent]:
         return self._session_state.messages
 
     def last_message(self) -> Optional[ChatEvent]:
@@ -159,7 +159,7 @@ class State:
         message: ChatEvent = {"type": "assistant_output", "text": text}
         self._session_state.messages.append(message)
 
-    def add_tool_use(self, *, id: str, input: object, name: str):
+    def add_tool_use(self, *, id: str, input: dict[str, Any], name: str):
         message: ChatEvent = {
             "id": id,
             "input": input,
