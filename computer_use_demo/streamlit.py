@@ -92,7 +92,8 @@ async def main():
     new_messages = _hume_evi_chat(user_input_message=user_input_message,
                                   state=state)
 
-    st.code(state.messages)
+    st.code("\n".join([m.__repr__() for m in state.messages]))
+    st.markdown(f"Cursor: {state.anthropic_api_cursor}")
     for chat_event in state.messages:
         _render_chat_event(chat_event)
         # if isinstance(message.content, str):
