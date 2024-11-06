@@ -5,21 +5,17 @@ Entrypoint for streamlit, see https://docs.streamlit.io/
 import asyncio
 import base64
 import os
-import subprocess
-from datetime import datetime
 from enum import StrEnum
-from functools import partial
 from pathlib import PosixPath
 from typing import Optional, cast
 
 import streamlit as st
-from anthropic import APIResponse
 from anthropic.types import (
     TextBlock, )
 from anthropic.types.beta import BetaMessage, BetaTextBlock, BetaToolUseBlock
 from anthropic.types.tool_use_block import ToolUseBlock
-from evi import Result as EviEvent, chat as evi_chat
-from streamlit.delta_generator import DeltaGenerator
+from .evi_chat_component import Result as EviEvent, chat as evi_chat
+from streamlit.runtime.state import SessionStateProxy
 
 from computer_use_demo.loop import (
     PROVIDER_TO_DEFAULT_MODEL_NAME,
@@ -57,36 +53,63 @@ async def setup_state():
             "firefox")
     if "messages" not in st.session_state:
         st.session_state.messages = []
-    if "api_key" not in st.session_state:
-        # Try to load API key from file first, then environment
-        st.session_state.api_key = os.getenv("ANTHROPIC_API_KEY", "")
-    if "api_key_input" not in st.session_state:
-        st.session_state.api_key_input = st.session_state.api_key
-    if "provider" not in st.session_state:
-        st.session_state.provider = (os.getenv("API_PROVIDER", "anthropic")
-                                     or APIProvider.ANTHROPIC)
-    if "model" not in st.session_state:
-        _reset_model()
-    if "auth_validated" not in st.session_state:
-        st.session_state.auth_validated = False
     if "responses" not in st.session_state:
         st.session_state.responses = {}
-    if "tools" not in st.session_state:
-        st.session_state.tools = {}
+    if "tool_use_responses" not in st.session_state:
+        st.session_state.tool_use_responses = {}
     if "only_n_most_recent_images" not in st.session_state:
         st.session_state.only_n_most_recent_images = 10
-    if "custom_system_prompt" not in st.session_state:
-        st.session_state.custom_system_prompt = load_from_storage(
-            "system_prompt") or ""
-    if "hide_images" not in st.session_state:
-        st.session_state.hide_images = False
     if "is_recording" not in st.session_state:
         st.session_state.is_recording = False
 
 
-def _reset_model():
-    st.session_state.model = PROVIDER_TO_DEFAULT_MODEL_NAME[cast(
-        APIProvider, st.session_state.provider)]
+
+PROVIDER = APIProvider.ANTHROPIC
+MODEL=PROVIDER_TO_DEFAULT_MODEL_NAME[PROVIDER]
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+CUSTOM_SYSTEM_PROMPT = ""
+ONLY_N_MOST_RECENT_IMAGES = 10
+HIDE_IMAGES = False
+# session_state is untyped, this is a type-safe wrapper around
+# session state to make it a little easier to manage and refactor
+class State:
+    _session_state: SessionStateProxy
+    def __init__(self, session_state: SessionStateProxy):
+        self._session_state = session_state
+
+    @property
+    def messages(self):
+        return self._session_state.messages
+
+    def add_message(self, message: BetaMessage):
+        self.messages.append(message)
+
+    @property
+    def anthropic_response_pending_tool_use(self):
+        return self._session_state.anthropic_response_pending_tool_use
+    
+    @anthropic_response_pending_tool_use.setter
+    def anthropic_response_pending_tool_use(self, value):
+        self._session_state.anthropic_response_pending_tool_use = value
+
+    @property
+    def tool_use_responses(self):
+        return self._session_state.tool_use_responses
+
+    def add_tool_use_response(self, tool_use_id: str, tool_result: ToolResult):
+        self.tool_use_responses[tool_use_id] = tool_result
+
+    @property
+    def evi_assistant_paused(self):
+        return self._session_state.evi_paused
+
+    @evi_assistant_paused.setter
+    def evi_assistant_paused(self, value):
+        self._session_state.evi_assistant_paused = value
+
+
+    
+
 
 
 async def main():
@@ -97,25 +120,23 @@ async def main():
 
     st.title("Computer Control Interface")
 
-    if auth_error := validate_auth(st.session_state.provider,
-                                   st.session_state.api_key):
+    state = State(st.session_state)
+
+    if auth_error := validate_auth(PROVIDER, ANTHROPIC_API_KEY):
         st.warning(
             f"Please resolve the following auth issue:\n\n{auth_error}")
         return
-    else:
-        st.session_state.auth_validated = True
 
     # Continue with rest of Streamlit UI
     user_input_message = st.chat_input(
         "Type or speak a message to control the computer...")
 
-    anthropic_response_pending_tool_use = st.session_state.get(
-        'anthropic_response_pending_tool_use', None)
+    anthropic_response_pending_tool_use = state.anthropic_response_pending_tool_use
 
-    new_message = _hume_evi_chat(user_input_message=user_input_message)
+    new_message = _hume_evi_chat(user_input_message=user_input_message, state=state)
 
     # render past chats
-    for message in st.session_state.messages:
+    for message in state.messages:
         if isinstance(message["content"], str):
             _render_message(message["role"], message["content"])
         elif isinstance(message["content"], list):
@@ -125,7 +146,7 @@ async def main():
                 if isinstance(block, dict) and block["type"] == "tool_result":
                     _render_message(
                         Sender.TOOL,
-                        st.session_state.tools[block["tool_use_id"]])
+                        state.tool_use_responses[block["tool_use_id"]])
                 else:
                     _render_message(
                         message["role"],
@@ -133,7 +154,7 @@ async def main():
                     )
 
     if new_message:
-        st.session_state.messages.append({
+        state.messages.append({
             "role":
             Sender.USER,
             "content": [TextBlock(type="text", text=new_message)],
@@ -141,7 +162,7 @@ async def main():
         _render_message(Sender.USER, new_message)
 
     try:
-        most_recent_message = st.session_state["messages"][-1]
+        most_recent_message = state.messages[-1]
     except IndexError:
         return
 
@@ -160,19 +181,16 @@ async def main():
         # run the agent sampling loop with the newest message
 
         result = await iterate_sampling_loop(
+            state=state,
             anthropic_response_pending_tool_use=
             anthropic_response_pending_tool_use,
-            system_prompt_suffix=st.session_state.custom_system_prompt,
-            model=st.session_state.model,
-            provider=st.session_state.provider,
-            messages=st.session_state.messages,
-            output_callback=partial(_render_message, Sender.BOT),
-            tool_output_callback=partial(_tool_output_callback,
-                                         tool_state=st.session_state.tools),
-            api_key=st.session_state.api_key,
-            only_n_most_recent_images=st.session_state.
-            only_n_most_recent_images)
-        st.session_state.anthropic_response_pending_tool_use = result
+            system_prompt_suffix=CUSTOM_SYSTEM_PROMPT,
+            model=MODEL,
+            provider=PROVIDER,
+            messages=state.messages,
+            api_key=ANTHROPIC_API_KEY,
+            only_n_most_recent_images=ONLY_N_MOST_RECENT_IMAGES)
+        state.anthropic_response_pending_tool_use = result
 
     st.rerun()
 
@@ -208,9 +226,9 @@ def save_to_storage(filename: str, data: str) -> None:
         st.write(f"Debug: Error saving {filename}: {e}")
 
 
-def _hume_get_assistant_input_message() -> Optional[str]:
+def _hume_get_assistant_input_message(state: State) -> Optional[str]:
     assistant_messages = [
-        message for message in st.session_state.messages
+        message for message in state.messages
         if message.get("role", None) == "assistant"
     ]
     if not assistant_messages:
@@ -226,8 +244,8 @@ def _hume_get_assistant_input_message() -> Optional[str]:
     return ret
 
 
-def _hume_pause_evi():
-    st.session_state['evi_assistant_paused'] = True
+def _hume_pause_evi(state):
+    state.evi_assistant_paused = True
 
 
 def _hume_extract_speech_from_message(
@@ -239,7 +257,7 @@ def _hume_extract_speech_from_message(
         message, str) and (isinstance(message, ToolResult)
                            or message.__class__.__name__ == "ToolResult"
                            or message.__class__.__name__ == "CLIResult")
-    if not message or (is_tool_result and st.session_state.hide_images
+    if not message or (is_tool_result and HIDE_IMAGES
                        and not hasattr(message, "error")
                        and not hasattr(message, "output")):
         return
@@ -255,7 +273,7 @@ def _hume_extract_speech_from_message(
                 return message.output
         if message.error:
             return message.output
-        if message.base64_image and not st.session_state.hide_images:
+        if message.base64_image and not HIDE_IMAGES:
             # TODO: should EVI indicate the presence of an image?
             return None
     elif isinstance(message, BetaTextBlock) or isinstance(message, TextBlock):
@@ -269,11 +287,7 @@ def _hume_extract_speech_from_message(
         return cast(str, message)
 
 
-def _hume_get_assistant_paused():
-    return st.session_state.get('evi_assistant_paused', False)
-
-
-def _hume_evi_chat(*, user_input_message: Optional[str]) -> Optional[str]:
+def _hume_evi_chat(*, state: State, user_input_message: Optional[str]) -> Optional[str]:
     """
     Renders the EVI chat, handles commands to EVI that are passed in through
     the session state, and acts on messages received from EVI. Returns a string
@@ -298,15 +312,15 @@ def _hume_evi_chat(*, user_input_message: Optional[str]) -> Optional[str]:
     event = evi_chat(
         hume_api_key=hume_api_key,
         key="evi_chat",
-        assistant_input_message=_hume_get_assistant_input_message(),
-        assistant_paused=_hume_get_assistant_paused(),
+        assistant_input_message=_hume_get_assistant_input_message(state),
+        assistant_paused=state.evi_assistant_paused,
         user_input_message=user_input_message)
 
     if not event:
         return
 
     if event['type'] == 'opened':
-        _hume_pause_evi()
+        _hume_pause_evi(state)
         return
 
     if event['type'] == 'message':
@@ -320,11 +334,11 @@ def _hume_evi_chat(*, user_input_message: Optional[str]) -> Optional[str]:
     return None
 
 
-def _tool_output_callback(tool_output: ToolResult, tool_id: str,
-                          tool_state: dict[str, ToolResult]):
-    """Handle a tool output by storing it to state and rendering it."""
-    tool_state[tool_id] = tool_output
-    _render_message(Sender.TOOL, tool_output)
+# def _tool_output_callback(tool_output: ToolResult, tool_id: str,
+#                           tool_state: dict[str, ToolResult]):
+#     """Handle a tool output by storing it to state and rendering it."""
+#     tool_state[tool_id] = tool_output
+#     _render_message(Sender.TOOL, tool_output)
 
 
 def _render_message(
@@ -337,7 +351,7 @@ def _render_message(
         message, str) and (isinstance(message, ToolResult)
                            or message.__class__.__name__ == "ToolResult"
                            or message.__class__.__name__ == "CLIResult")
-    if not message or (is_tool_result and st.session_state.hide_images
+    if not message or (is_tool_result and HIDE_IMAGES
                        and not hasattr(message, "error")
                        and not hasattr(message, "output")):
         return
@@ -351,7 +365,7 @@ def _render_message(
                     st.markdown(message.output)
             if message.error:
                 st.error(message.error)
-            if message.base64_image and not st.session_state.hide_images:
+            if message.base64_image and not HIDE_IMAGES:
                 st.image(base64.b64decode(message.base64_image))
         elif isinstance(message, BetaTextBlock) or isinstance(
                 message, TextBlock):

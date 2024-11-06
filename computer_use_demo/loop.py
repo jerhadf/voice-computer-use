@@ -3,14 +3,13 @@ Agentic sampling loop that calls the Anthropic API and local implenmentation of 
 """
 
 import platform
-from collections.abc import Callable
-from copy import copy, deepcopy
+from copy import deepcopy
 from datetime import datetime
 from enum import StrEnum
 from typing import Any, Optional, cast
 
 import streamlit as st
-from anthropic import AsyncAnthropic, APIResponse
+from anthropic import AsyncAnthropic
 from anthropic.types import (
     ToolResultBlockParam, )
 from anthropic.types.beta import (
@@ -24,6 +23,8 @@ from anthropic.types.beta import (
     BetaToolResultBlockParam,
 )
 
+from computer_use_demo.streamlit import State
+
 from .tools import BashTool, ComputerTool, EditTool, ToolCollection, ToolResult
 
 BETA_FLAG = "computer-use-2024-10-22"
@@ -33,7 +34,6 @@ class APIProvider(StrEnum):
     ANTHROPIC = "anthropic"
     BEDROCK = "bedrock"
     VERTEX = "vertex"
-
 
 PROVIDER_TO_DEFAULT_MODEL_NAME: dict[APIProvider, str] = {
     APIProvider.ANTHROPIC: "claude-3-5-sonnet-20241022",
@@ -160,10 +160,8 @@ async def phone_anthropic(
 
 async def use_tools(
     *,
-    model: str,
+    state: State,
     messages: list[BetaMessageParam],
-    output_callback: Callable[[BetaContentBlock], None],
-    tool_output_callback: Callable[[ToolResult, str], None],
     tool_collection: ToolCollection,
     response: BetaMessage,
 ) -> bool:
@@ -177,7 +175,7 @@ async def use_tools(
             )
             tool_result_content.append(
                 _make_api_tool_result(result, content_block.id))
-            tool_output_callback(result, content_block.id)
+            state.add_tool_use_response(content_block.id, result)
 
     if not tool_result_content:
         is_done = True
@@ -189,6 +187,7 @@ async def use_tools(
 
 async def iterate_sampling_loop(
     *,
+    state: State,
     anthropic_response_pending_tool_use: Optional[BetaMessage],
     model: str,
     provider: APIProvider,
@@ -209,35 +208,30 @@ async def iterate_sampling_loop(
 
     is_done = False
     if anthropic_response_pending_tool_use:
-        is_done = await use_tools(model=model,
+        is_done = await use_tools(state=state,
                                   messages=messages,
-                                  output_callback=output_callback,
-                                  tool_output_callback=tool_output_callback,
                                   tool_collection=tool_collection,
                                   response=anthropic_response_pending_tool_use)
 
         if is_done:
             return None
 
-    try:
-        result = await phone_anthropic(
-            tool_collection=tool_collection,
-            model=model,
-            provider=provider,
-            system_prompt_suffix=system_prompt_suffix,
-            messages=messages,
-            api_key=api_key,
-            only_n_most_recent_images=only_n_most_recent_images,
-            max_tokens=max_tokens,
-        )
-        return result
-    except Exception as e:
-        return None
+    result = await phone_anthropic(
+        tool_collection=tool_collection,
+        model=model,
+        provider=provider,
+        system_prompt_suffix=system_prompt_suffix,
+        messages=messages,
+        api_key=api_key,
+        only_n_most_recent_images=only_n_most_recent_images,
+        max_tokens=max_tokens,
+    )
+    return result
 
 
 def _maybe_filter_to_n_most_recent_images(
     messages: list[BetaMessageParam],
-    images_to_keep: int,
+    images_to_keep: Optional[int],
     min_removal_threshold: int = 10,
 ):
     """
