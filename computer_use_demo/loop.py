@@ -7,6 +7,7 @@ from copy import deepcopy
 from datetime import datetime
 from enum import StrEnum
 from typing import Any, cast
+import time
 
 import streamlit as st
 from anthropic import Anthropic
@@ -124,7 +125,13 @@ def phone_anthropic(
             ] if x]
     tools = cast(list[BetaToolParam],
                        tool_collection.to_params())
+
+    print("sleeping gratuitously for 2 secords")
+    time.sleep(2)
+    print("done sleeping")
     print("starting anthropic call...")
+    # The problem is right here. Apparently, in the middle of while this is going on, Streamlit reruns
+    # (in response to a widget update of evi_chat)
     raw_response = Anthropic(
         api_key=api_key).beta.messages.with_raw_response.create(
             max_tokens=max_tokens,
@@ -134,6 +141,9 @@ def phone_anthropic(
             tools=tools,
             extra_headers={"anthropic-beta": BETA_FLAG},
         )
+    # and we never reach here.
+    # We need some way of preventing streamlit from rerunning while the request is in flight, or
+    # some way of making this request happen in another thread or something that can't be interrupted
     print("finishing anthropic call...")
 
     response = raw_response.parse()
