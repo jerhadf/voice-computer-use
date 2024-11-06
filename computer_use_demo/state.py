@@ -119,6 +119,8 @@ class State:
             session_state['evi_assistant_paused'] = None
         if 'anthropic_response_pending_tool_use' not in session_state:
             session_state.anthropic_response_pending_tool_use = None
+        if 'evi_chat_cursor' not in session_state:
+            session_state.evi_chat_cursor = 0
 
     @property
     def messages(self) -> Iterable[ChatEvent]:
@@ -177,4 +179,12 @@ class State:
     @evi_assistant_paused.setter
     def evi_assistant_paused(self, value: bool):
         self._session_state.evi_assistant_paused = value
+
+    @property
+    def evi_chat_cursor(self) -> int:
+        return self._session_state.evi_chat_cursor
+
+    @evi_chat_cursor.setter
+    def evi_chat_cursor(self, value: int):
+        self._session_state.evi_chat_cursor = value
 
