@@ -115,16 +115,6 @@ async def main():
     for new_message in new_messages:
         state.add_user_input(new_message)
 
-    most_recent_message = state.last_message()
-
-    if not most_recent_message:
-        return
-
-    if most_recent_message[
-            'type'] != 'user_input' and not anthropic_response_pending_tool_use:
-        # we don't have a user message to respond to, exit early
-        return
-
     # 1. User made a request to the loop, no request has been sent to anthropic "idle"
     # 2. Anthropic request has been sent, but the tool uses for the latest anthropic request
     #    have not yet been dispatched "pending_tool_use"
@@ -134,7 +124,7 @@ async def main():
     with st.spinner("Running Agent..."):
         # run the agent sampling loop with the newest message
 
-        is_done = await iterate_sampling_loop(
+        await iterate_sampling_loop(
             state=state,
             system_prompt_suffix=CUSTOM_SYSTEM_PROMPT,
             model=MODEL,
@@ -142,7 +132,7 @@ async def main():
             api_key=ANTHROPIC_API_KEY,
             only_n_most_recent_images=ONLY_N_MOST_RECENT_IMAGES)
 
-        if not is_done:
+        if state.anthropic_api_cursor < len(state.messages):
             st.rerun()
 
 

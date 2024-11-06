@@ -189,9 +189,7 @@ async def iterate_sampling_loop(
     """
     Agentic sampling loop for the assistant/tool interaction of computer use.
     """
-    if len(state.messages) <= state.anthropic_api_cursor:
-        return True
-
+    
     tool_collection = ToolCollection(
         ComputerTool(),
         BashTool(),
@@ -200,11 +198,8 @@ async def iterate_sampling_loop(
 
     unprocessed_messages = state.messages[state.anthropic_api_cursor:]
 
-    pending_tool_use = []
     for message in unprocessed_messages:
         if message['type'] == 'user_input':
-            if pending_tool_use:
-                st.error("Unexpected... got user input with pending tool use")
             state.anthropic_api_cursor += 1
             await phone_anthropic(
                     state=state,
