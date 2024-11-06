@@ -36,8 +36,12 @@ class ToolResultEvent(TypedDict):
     result: ToolResult
     tool_use_id: str
 
+class ErrorEvent(TypedDict):
+    type: Literal['error']
+    error: Any
 
-ChatEvent = UserInputEvent | AssistantOutputEvent | ToolUseEvent | ToolResultEvent
+
+ChatEvent = UserInputEvent | AssistantOutputEvent | ToolUseEvent | ToolResultEvent | ErrorEvent
 
 
 def _maybe_prepend_system_tool_result(result: ToolResult, result_text: str):
@@ -81,7 +85,7 @@ def _make_api_tool_result(result: ToolResult,
     }
 
 
-def to_beta_message_param(event: ChatEvent) -> BetaMessageParam:
+def to_beta_message_param(event: ChatEvent) -> Optional[BetaMessageParam]:
     if event['type'] == 'user_input':
         return {
             "content": [{
@@ -112,6 +116,8 @@ def to_beta_message_param(event: ChatEvent) -> BetaMessageParam:
     elif event['type'] == 'tool_result':
         block = _make_api_tool_result(event["result"], event["tool_use_id"])
         return {"content": [block], "role": "user"}
+    elif event['type'] == 'error':
+        return None
     assert_never(event)
 
 

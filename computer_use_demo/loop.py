@@ -123,10 +123,10 @@ async def phone_anthropic(
             raw_response = await AsyncAnthropic(
                 api_key=api_key).beta.messages.with_raw_response.create(
                     max_tokens=max_tokens,
-                    messages=[
+                    messages=[x for x in [
                         to_beta_message_param(message)
                         for message in state.messages
-                    ],
+                    ] if x],
                     model=model,
                     system=system,
                     tools=cast(list[BetaToolParam],

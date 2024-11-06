@@ -287,11 +287,16 @@ def _chat_event_sender(chat_event: ChatEvent) -> Sender:
         return Sender.BOT
     elif chat_event['type'] == 'tool_result':
         return Sender.TOOL
+    elif chat_event['type'] == 'error':
+        raise ValueError("Unexpected, errors shouldn't have senders")
     else:
         assert_never(chat_event)
 
 
 def _render_chat_event(chat_event: ChatEvent):
+    if chat_event['type'] == 'error':
+        st.error(chat_event['error'])
+        return
     sender = _chat_event_sender(chat_event)
     with st.chat_message(sender):
         if chat_event['type'] == 'user_input':
