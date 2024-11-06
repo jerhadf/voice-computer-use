@@ -9,7 +9,7 @@ from enum import StrEnum
 from typing import Any, cast
 
 import streamlit as st
-from anthropic import AsyncAnthropic
+from anthropic import Anthropic
 from anthropic.types.beta import (
     BetaMessage,
     BetaToolParam,
@@ -118,7 +118,7 @@ async def phone_anthropic(
     # implementation may be able call the SDK directly with:
     # `response = client.messages.create(...)` instead.
 
-    raw_response = await AsyncAnthropic(
+    raw_response = Anthropic(
         api_key=api_key).beta.messages.with_raw_response.create(
             max_tokens=max_tokens,
             messages=[x for x in [
