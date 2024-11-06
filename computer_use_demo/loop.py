@@ -126,9 +126,6 @@ def phone_anthropic(
     tools = cast(list[BetaToolParam],
                        tool_collection.to_params())
 
-    print("sleeping gratuitously for 2 secords")
-    time.sleep(2)
-    print("done sleeping")
     print("starting anthropic call...")
     # The problem is right here. Apparently, in the middle of while this is going on, Streamlit reruns
     # (in response to a widget update of evi_chat)
@@ -233,6 +230,9 @@ async def iterate_sampling_loop(
             print(f"Tools have run. There are now {len(state.messages)} messages and the cursor is at {state.anthropic_api_cursor}. Yielding control...")
             return False
         if message['type'] == 'tool_result':
+            print("sleeping gratuitously for 2 secords")
+            time.sleep(2)
+            print("done sleeping")
             state.anthropic_api_cursor += 1
             print(f"Making a request to anthropic")
             try:
