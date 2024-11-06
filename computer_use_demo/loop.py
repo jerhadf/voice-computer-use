@@ -10,22 +10,15 @@ from typing import Any, Optional, cast
 
 import streamlit as st
 from anthropic import AsyncAnthropic
-from anthropic.types import (
-    ToolResultBlockParam, )
 from anthropic.types.beta import (
     BetaContentBlock,
-    BetaContentBlockParam,
-    BetaImageBlockParam,
     BetaMessage,
-    BetaMessageParam,
-    BetaTextBlockParam,
     BetaToolParam,
-    BetaToolResultBlockParam,
 )
 
-from computer_use_demo.streamlit import State
+from computer_use_demo.state import State, to_beta_message_param
 
-from .tools import BashTool, ComputerTool, EditTool, ToolCollection, ToolResult
+from .tools import BashTool, ComputerTool, EditTool, ToolCollection 
 
 BETA_FLAG = "computer-use-2024-10-22"
 
@@ -105,11 +98,11 @@ def truncate_data_field(obj, visited=None):
 
 async def phone_anthropic(
     *,
+    state: State,
     tool_collection: ToolCollection,
     model: str,
     provider: APIProvider,
     system_prompt_suffix: str,
-    messages: list[BetaMessageParam],
     api_key: str,
     only_n_most_recent_images: int | None,
     max_tokens: int,
@@ -117,9 +110,9 @@ async def phone_anthropic(
     system = (
         f"{SYSTEM_PROMPT}{' ' + system_prompt_suffix if system_prompt_suffix else ''}"
     )
-    if only_n_most_recent_images:
-        _maybe_filter_to_n_most_recent_images(messages,
-                                              only_n_most_recent_images)
+    # if only_n_most_recent_images:
+    #     _maybe_filter_to_n_most_recent_images(state.messages,
+    #                                           only_n_most_recent_images)
 
     # we use raw_response to provide debug information to streamlit. Your
     # implementation may be able call the SDK directly with:
@@ -131,7 +124,7 @@ async def phone_anthropic(
             raw_response = await AsyncAnthropic(
                 api_key=api_key).beta.messages.with_raw_response.create(
                     max_tokens=max_tokens,
-                    messages=messages,
+                    messages=[to_beta_message_param(message) for message in state.messages],
                     model=model,
                     system=system,
                     tools=cast(list[BetaToolParam],
@@ -148,12 +141,15 @@ async def phone_anthropic(
 
     response = raw_response.parse()
 
-    messages.append({
-        "role":
-        "assistant",
-        "content":
-        cast(list[BetaContentBlockParam], response.content),
-    })
+    for content_block in response.content:
+        if content_block.type == "tool_use":
+            state.add_tool_use(
+                id=content_block.id,
+                input=content_block.input,
+                name=content_block.name,
+            )
+        elif content_block.type == "text":
+            state.add_assistant_output(content_block.text)
 
     return response
 
@@ -161,26 +157,18 @@ async def phone_anthropic(
 async def use_tools(
     *,
     state: State,
-    messages: list[BetaMessageParam],
     tool_collection: ToolCollection,
     response: BetaMessage,
 ) -> bool:
-    is_done = False
-    tool_result_content: list[BetaToolResultBlockParam] = []
-    for content_block in cast(list[BetaContentBlock], response.content):
+    is_done = True
+    for content_block in response.content:
         if content_block.type == "tool_use":
             result = await tool_collection.run(
                 name=content_block.name,
                 tool_input=cast(dict[str, Any], content_block.input),
             )
-            tool_result_content.append(
-                _make_api_tool_result(result, content_block.id))
-            state.add_tool_use_response(content_block.id, result)
-
-    if not tool_result_content:
-        is_done = True
-    else:
-        messages.append({"content": tool_result_content, "role": "user"})
+            state.add_tool_result(result, content_block.id)
+            is_done = False
 
     return is_done
 
@@ -192,7 +180,6 @@ async def iterate_sampling_loop(
     model: str,
     provider: APIProvider,
     system_prompt_suffix: str,
-    messages: list[BetaMessageParam],
     api_key: str,
     only_n_most_recent_images: int | None = None,
     max_tokens: int = 4096,
@@ -209,7 +196,6 @@ async def iterate_sampling_loop(
     is_done = False
     if anthropic_response_pending_tool_use:
         is_done = await use_tools(state=state,
-                                  messages=messages,
                                   tool_collection=tool_collection,
                                   response=anthropic_response_pending_tool_use)
 
@@ -217,11 +203,11 @@ async def iterate_sampling_loop(
             return None
 
     result = await phone_anthropic(
+        state=state,
         tool_collection=tool_collection,
         model=model,
         provider=provider,
         system_prompt_suffix=system_prompt_suffix,
-        messages=messages,
         api_key=api_key,
         only_n_most_recent_images=only_n_most_recent_images,
         max_tokens=max_tokens,
@@ -229,88 +215,4 @@ async def iterate_sampling_loop(
     return result
 
 
-def _maybe_filter_to_n_most_recent_images(
-    messages: list[BetaMessageParam],
-    images_to_keep: Optional[int],
-    min_removal_threshold: int = 10,
-):
-    """
-    With the assumption that images are screenshots that are of diminishing value as
-    the conversation progresses, remove all but the final `images_to_keep` tool_result
-    images in place, with a chunk of min_removal_threshold to reduce the amount we
-    break the implicit prompt cache.
-    """
-    if images_to_keep is None:
-        return messages
 
-    tool_result_blocks = cast(
-        list[ToolResultBlockParam],
-        [
-            item for message in messages
-            for item in (message["content"] if isinstance(
-                message["content"], list) else [])
-            if isinstance(item, dict) and item.get("type") == "tool_result"
-        ],
-    )
-
-    total_images = sum(
-        1 for tool_result in tool_result_blocks
-        for content in tool_result.get("content", [])
-        if isinstance(content, dict) and content.get("type") == "image")
-
-    images_to_remove = total_images - images_to_keep
-    # for better cache behavior, we want to remove in chunks
-    images_to_remove -= images_to_remove % min_removal_threshold
-
-    for tool_result in tool_result_blocks:
-        if isinstance(tool_result.get("content"), list):
-            new_content = []
-            for content in tool_result.get("content", []):
-                if isinstance(content,
-                              dict) and content.get("type") == "image":
-                    if images_to_remove > 0:
-                        images_to_remove -= 1
-                        continue
-                new_content.append(content)
-            tool_result["content"] = new_content
-
-
-def _make_api_tool_result(result: ToolResult,
-                          tool_use_id: str) -> BetaToolResultBlockParam:
-    """Convert an agent ToolResult to an API ToolResultBlockParam."""
-    tool_result_content: list[BetaTextBlockParam
-                              | BetaImageBlockParam] | str = []
-    is_error = False
-    if result.error:
-        is_error = True
-        tool_result_content = _maybe_prepend_system_tool_result(
-            result, result.error)
-    else:
-        if result.output:
-            tool_result_content.append({
-                "type":
-                "text",
-                "text":
-                _maybe_prepend_system_tool_result(result, result.output),
-            })
-        if result.base64_image:
-            tool_result_content.append({
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": "image/png",
-                    "data": result.base64_image,
-                },
-            })
-    return {
-        "type": "tool_result",
-        "content": tool_result_content,
-        "tool_use_id": tool_use_id,
-        "is_error": is_error,
-    }
-
-
-def _maybe_prepend_system_tool_result(result: ToolResult, result_text: str):
-    if result.system:
-        result_text = f"<system>{result.system}</system>\n{result_text}"
-    return result_text
