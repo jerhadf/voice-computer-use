@@ -175,58 +175,11 @@ def _hume_get_assistant_input_message(state: State) -> Optional[str]:
     if not assistant_messages:
         return None
 
-    ret = "\n".join(x for x in [
-        _hume_extract_speech_from_message(x)
-        for x in assistant_messages[-1]['text']
-    ] if x)
-    if not isinstance(ret, str):
-        st.error(ret)
-        st.error("was not a string")
-    return ret
+    return assistant_messages[-1]['text']
 
 
 def _hume_pause_evi(state):
     state.evi_assistant_paused = True
-
-
-def _hume_extract_speech_from_message(
-    message: str | BetaTextBlock | BetaToolUseBlock | ToolResult,
-) -> str | None:
-    """Adapted from _render_message but instead of producing streamlit output produces text, or returns None if the message isn't suitable for speaking"""
-    # TODO: this could be overkill, we probably don't actually call _hume_extract_speech_from_message on all these types of messages
-    is_tool_result = not isinstance(
-        message, str) and (isinstance(message, ToolResult)
-                           or message.__class__.__name__ == "ToolResult"
-                           or message.__class__.__name__ == "CLIResult")
-    if not message or (is_tool_result and HIDE_IMAGES
-                       and not hasattr(message, "error")
-                       and not hasattr(message, "output")):
-        return
-
-    if is_tool_result:
-        message = cast(ToolResult, message)
-        if message.output:
-            if message.__class__.__name__ == "CLIResult":
-                # TODO: maybe there is a nice way for EVI to opt out of trying to phonetically
-                # pronounce code
-                return message.output
-            else:
-                return message.output
-        if message.error:
-            return message.output
-        if message.base64_image and not HIDE_IMAGES:
-            # TODO: should EVI indicate the presence of an image?
-            return None
-    elif isinstance(message, BetaTextBlock) or isinstance(message, TextBlock):
-        return message.text
-    elif isinstance(message, BetaToolUseBlock) or isinstance(
-            message, ToolUseBlock):
-        # TODO: is there something better to do here? This looks like structured data and it's unclear how
-        # to get text from this
-        return str(message.input)
-    else:
-        return cast(str, message)
-
 
 def _hume_evi_chat(*, state: State,
                    user_input_message: Optional[str]) -> List[str]:
