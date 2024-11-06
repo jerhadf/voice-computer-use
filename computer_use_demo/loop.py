@@ -3,13 +3,11 @@ Agentic sampling loop that calls the Anthropic API and local implenmentation of 
 """
 
 import platform
-from copy import deepcopy
 from datetime import datetime
 from enum import StrEnum
 from typing import Any, cast
 import time
 
-import streamlit as st
 from anthropic import Anthropic
 from anthropic.types.beta import (
     BetaMessage,
@@ -162,7 +160,6 @@ async def iterate_sampling_loop(
                     state=state,
                     tool_collection=tool_collection,
                     model=model,
-                    provider=provider,
                     system_prompt_suffix=system_prompt_suffix,
                     api_key=api_key,
                     only_n_most_recent_images=only_n_most_recent_images,
@@ -191,7 +188,6 @@ async def iterate_sampling_loop(
                     state=state,
                     tool_collection=tool_collection,
                     model=model,
-                    provider=provider,
                     system_prompt_suffix=system_prompt_suffix,
                     api_key=api_key,
                     only_n_most_recent_images=only_n_most_recent_images,
