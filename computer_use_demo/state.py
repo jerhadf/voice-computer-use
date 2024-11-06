@@ -83,6 +83,43 @@ def _make_api_tool_result(result: ToolResult,
     }
 
 
+
+def group_tool_message_params(events: List[BetaMessageParam]) -> List[BetaMessageParam]:
+    if not events:
+        return []
+    ret = [events[0]]
+    for event in events[1:]:
+        last_event = ret[-1]
+        if isinstance(event['content'], str) or isinstance(last_event['content'], str):
+            ret.append(event)
+            continue
+        if not event['content'] or not last_event['content']:
+            ret.append(event)
+            continue
+        content = list(event['content'])[0]
+        last_content = list(last_event['content'])
+        last_content_type = last_content[-1]['type']
+        if last_content_type != 'tool_use' and last_content_type != 'tool_result':
+            ret.append(event)
+            continue
+        
+        if content['type'] != last_content_type:
+            ret.append(event)
+            continue
+        if content['type'] != 'tool_use' and content['type'] != 'tool_result':
+            ret.append(event)
+            continue
+        last_content.append(content)
+        ret[-1]['content'] = last_content
+    return ret
+
+
+
+
+
+
+
+
 def to_beta_message_param(event: DemoEvent) -> Optional[BetaMessageParam]:
     if event['type'] == 'user_input':
         return {
