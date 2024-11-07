@@ -71,8 +71,10 @@ def phone_anthropic(
     )
 
     messages = group_tool_message_params([
-        x for x in
-        [to_beta_message_param(message) for message in state.demo_events] if x
+        x for x in [
+            to_beta_message_param(message)
+            for message in state.demo_events[:state.anthropic_api_cursor + 1]
+        ] if x
     ])
     tools = cast(list[BetaToolParam], tool_collection.to_params())
 
@@ -208,9 +210,8 @@ async def iterate_sampling_loop(
             return False
         if message['type'] == 'error':
             state.add_error(message['error'])
-            state.anthropic_api_cursor += 1
             print(
-                f"An error has occurred. There are now {len(state.demo_events)} messages and the cursor is at {state.anthropic_api_cursor}. Yielding control..."
+                f"An error has occurred. There are now {len(state.demo_events)} messages and the cursor is at {state.anthropic_api_cursor}. Refusing to advance the cursor."
             )
             return False
 
