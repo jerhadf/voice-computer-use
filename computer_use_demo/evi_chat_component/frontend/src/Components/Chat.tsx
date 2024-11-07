@@ -91,8 +91,17 @@ const InteractiveChat = (props: ComponentProps) => {
     </>
   )
 }
+type Listenable = `message.${Parameters<NonNullable<VoiceProviderParam["onMessage"]>>[0]['type']}` | ChatEvent["type"]
 type StreamlitArgs = InteractivityProps & {
   hume_api_key: string
+  listen_to?: Array<Listenable>
+}
+const defaultListenTo: Array<Listenable> = ["message.user_message", "opened", "closed", "error"]
+const listenedTo = (listen_to: Array<Listenable> = defaultListenTo, event: ChatEvent) => {
+  if (event.type === "message") {
+    return listen_to.includes(`message.${event.message.type}`)
+  }
+  return listen_to.includes(event.type)
 }
 
 type VoiceProviderParam = Parameters<typeof VoiceProvider>[0]
@@ -113,17 +122,22 @@ type ChatEvent =
     }
 
 const Chat = (props: ComponentProps) => {
+  const { hume_api_key, listen_to } = props.args as StreamlitArgs
   const [events, setEvents] = React.useState<ChatEvent[]>([])
+  const [cursor, setCursor] = React.useState(0)
   const addEvent = (event: ChatEvent) => {
     setEvents([...events, event])
   }
   useEffect(() => {
-    Streamlit.setComponentValue(events);
-    console.log(events.slice(-1)[0]);
+    const newEvents = events.slice(cursor, events.length)
+    if (newEvents.some(e => listenedTo(listen_to, e))) {
+      Streamlit.setComponentValue(events);
+      setCursor(events.length)
+    }
   }, [events])
   return (
     <VoiceProvider
-      auth={{ type: "apiKey", value: props.args["hume_api_key"] as string }}
+      auth={{ type: "apiKey", value: hume_api_key }}
       onMessage={(message) => {
         addEvent({ type: "message", message })
       }}
