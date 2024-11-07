@@ -86,22 +86,16 @@ async def main():
     new_messages = _hume_evi_chat(user_input_message=user_input_message,
                                   state=state)
 
-    st.code("\n".join([m.__repr__() for m in state.demo_events]))
-    for chat_event in state.demo_events:
-        _render_chat_event(chat_event)
-
     for new_message in new_messages:
         state.add_user_input(new_message)
 
-    # 1. User made a request to the loop, no request has been sent to anthropic "idle"
-    # 2. Anthropic request has been sent, but the tool uses for the latest anthropic request
-    #    have not yet been dispatched "pending_tool_use"
-    # 3. The last response from the anthropic API did not contain any tool use instructions, so
-    #.   we can wait for more user input "idle"
+    st.code("\n".join([m.__repr__() for m in state.demo_events]))
+
+    for chat_event in state.demo_events:
+        _render_chat_event(chat_event)
+
 
     with st.spinner("Running Agent..."):
-        # run the agent sampling loop with the newest message
-
         await iterate_sampling_loop(
             state=state,
             system_prompt_suffix=CUSTOM_SYSTEM_PROMPT,
