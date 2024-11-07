@@ -118,8 +118,8 @@ const Chat = (props: ComponentProps) => {
     setEvents([...events, event])
   }
   useEffect(() => {
-    console.log(events.slice(-1))
-    Streamlit.setComponentValue(events)
+    Streamlit.setComponentValue(events);
+    console.log(events.slice(-1)[0]);
   }, [events])
   return (
     <VoiceProvider
