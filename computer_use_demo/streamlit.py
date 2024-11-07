@@ -87,7 +87,6 @@ async def main():
                                   state=state)
 
     st.code("\n".join([m.__repr__() for m in state.demo_events]))
-    st.markdown(f"Cursor: {state.anthropic_api_cursor}")
     for chat_event in state.demo_events:
         _render_chat_event(chat_event)
 
@@ -182,11 +181,12 @@ def _hume_evi_chat(*, state: State,
         assistant_paused=state.evi_assistant_paused,
         user_input_message=user_input_message) or []
 
+    st.code(events)
+
     if state.evi_chat_cursor < len(events):
         new_events = events[state.evi_chat_cursor:]
         state.evi_chat_cursor = len(events)
 
-    st.markdown(new_events)
 
     ret = []
     for event in new_events:
