@@ -1,19 +1,19 @@
 import platform
 from datetime import datetime
 from enum import StrEnum
-from queue import Queue
-from typing import Any, Dict, Literal, Optional, TypedDict, cast
+from typing import Any, Optional, cast
 
 from anthropic import Anthropic
 from anthropic.types.beta import (
     BetaMessage,
     BetaToolParam,
-BetaMessageParam
+    BetaMessageParam,
+    BetaToolResultBlockParam
+
 )
 from pydantic.utils import assert_never
 
 from computer_use_demo.state import DemoEvent, State, WorkerEvent, WorkerEventAnthropicResponse, WorkerQueue, group_tool_message_params, to_beta_message_param
-from computer_use_demo.tools.base import ToolResult
 
 from .tools import BashTool, ComputerTool, EditTool, ToolCollection
 
@@ -60,18 +60,20 @@ async def phone_anthropic(
         f"{SYSTEM_PROMPT}{' ' + system_prompt_suffix if system_prompt_suffix else ''}"
     )
 
-    messages = _maybe_filter_to_n_most_recent_images(messages=group_tool_message_params([
+    messages = messages=group_tool_message_params([
         x for x in [
             to_beta_message_param(message)
             for message in demo_events
         ] if x
-    ]), images_to_keep=only_n_most_recent_images)
+    ])
+
+    _maybe_filter_to_n_most_recent_images(messages, images_to_keep=only_n_most_recent_images)
     tools = cast(list[BetaToolParam], tool_collection.to_params())
 
     raw_response = Anthropic(
         api_key=api_key).beta.messages.with_raw_response.create(
             max_tokens=max_tokens,
-            messages=messages,
+            messages=messages or [],
             model=model,
             system=system,
             tools=tools,
@@ -82,7 +84,7 @@ async def phone_anthropic(
 
 def _maybe_filter_to_n_most_recent_images(
     messages: list[BetaMessageParam],
-    images_to_keep: int,
+    images_to_keep: Optional[int],
     min_removal_threshold: int = 10,
 ):
     """
@@ -95,7 +97,7 @@ def _maybe_filter_to_n_most_recent_images(
         return messages
 
     tool_result_blocks = cast(
-        list[ToolResultBlockParam],
+        list[BetaToolResultBlockParam],
         [
             item
             for message in messages

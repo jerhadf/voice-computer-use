@@ -3,7 +3,6 @@ from typing import List, Optional
 import streamlit as st
 import threading
 import asyncio
-import time
 from queue import Queue
 
 from computer_use_demo.state import DemoEvent, State, WorkerQueue
