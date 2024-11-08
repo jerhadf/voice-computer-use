@@ -184,6 +184,8 @@ def _hume_evi_chat(*, state: State,
         return []
 
     new_events = []
+    if len(state.evi_commands) == 0:
+        state.pause_evi()
     events = empathic_voice_chat(
         key="evi_chat",
         commands=state.evi_commands,
