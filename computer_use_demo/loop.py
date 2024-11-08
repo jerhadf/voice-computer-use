@@ -79,7 +79,7 @@ async def phone_anthropic(
     response = raw_response.parse()
     return response
 
-def process_computer_use_event(state: State, result: WorkerEvent) -> bool:
+def process_computer_use_event(state: State, result: WorkerEvent):
     """Updates the state based on the result from the background thread."""
     print("Inside here")
     if result['type'] == 'anthropic_response':
@@ -93,20 +93,16 @@ def process_computer_use_event(state: State, result: WorkerEvent) -> bool:
                 )
             elif content_block.type == "text":
                 state.add_assistant_output(content_block.text)
-        return True
-    if result['type'] == 'tool_result':
+    elif result['type'] == 'tool_result':
       state.add_tool_result(result['tool_result'], result['tool_use_id'])
-      return True
-    if result['type'] == 'finished':
+    elif result['type'] == 'finished':
         print("Worker finished at cursor", result['cursor'])
         state.worker_running = False
         state.worker_cursor = result['cursor']
-        return False
     elif result['type'] == 'error':
         state.add_error(result['error'])
-        return True
     else:
-        assert_never(result)
+        assert_never(result, "Unexpected message type")
 
 async def run_worker(
     *,

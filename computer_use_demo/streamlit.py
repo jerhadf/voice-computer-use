@@ -94,7 +94,7 @@ async def main():
     for chat_event in state.demo_events:
         _render_chat_event(chat_event)
 
-    if not state.worker_running:
+    if not state.worker_running and state.worker_cursor < len(state.demo_events):
         print("Starting worker...")
         # Schedule the async task onto the background event loop
         state.worker_running = True
@@ -112,19 +112,28 @@ async def main():
             st.session_state.asyncio_thread.loop
         )
 
-    while True:
-        if state.worker_queue.empty():
-            await asyncio.sleep(0.1)
-            continue
-        result = state.worker_queue.get()
-        print(f"Processing result: {result}")
-        length_before = len(state.demo_events)
-        message_should_rerun = process_computer_use_event(state, result)
-        length_after = len(state.demo_events)
-        print(f"Processed result. Added {length_after - length_before} messages:")
-        print('  \n'.join([str(x) for x in state.demo_events[-(length_after - length_before):]]))
-        print('')
-        print(f"The cursor is at {state.worker_cursor} the history length is {len(state.demo_events)}, and the worker is {'running' if state.worker_running else 'not running'}")
+
+    if state.worker_queue.empty():
+        if state.worker_running:
+            print("The worker is running but the queue is empty. Waiting for user interaction or the worker to produce a result.")
+            while state.worker_queue.empty():
+                await asyncio.sleep(.1)
+            st.rerun()
+        else:
+            print("The worker is not running and the queue is empty. Waiting for user interaction.")
+            return
+
+    result = state.worker_queue.get()
+    print(f"Processing result: {result}")
+    length_before = len(state.demo_events)
+    process_computer_use_event(state, result)
+    length_after = len(state.demo_events)
+    print(f"Processed result. Added {length_after - length_before} messages:")
+    print('  \n'.join([str(x) for x in state.demo_events[-(length_after - length_before):]]))
+    print('')
+    print(f"The cursor is at {state.worker_cursor} the history length is {len(state.demo_events)}, and the worker is {'running' if state.worker_running else 'not running'}")
+    st.rerun()
+
 
 
 def validate_auth(provider: APIProvider, api_key: str | None):
