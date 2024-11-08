@@ -143,7 +143,8 @@ def process_computer_use_event(state: State, result: WorkerEvent):
                     name=content_block.name,
                 )
             elif content_block.type == "text":
-                state.send_assistant_input(content_block.text)
+                state.add_assistant_output(content_block.text)
+                state.trigger_evi_speech(content_block.text)
     elif result['type'] == 'tool_result':
       state.add_tool_result(result['tool_result'], result['tool_use_id'])
     elif result['type'] == 'finished':

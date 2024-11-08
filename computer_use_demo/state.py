@@ -219,15 +219,17 @@ class State:
             return self._session_state.demo_events[-1]
         return None
 
-    def send_user_input(self, text: str):
-        message: ChatCommand = {"type": "sendUserInput", "message": text}
-        self._session_state.evi_commands.append(message)
+    def add_user_input(self, text: str):
+        event: DemoEvent = {"type": "user_input", "text": text}
+        self._session_state.demo_events.append(event)
 
-    def send_assistant_input(self, text: str):
+    def add_assistant_output(self, text: str):
         event: DemoEvent = {"type": "assistant_output", "text": text}
         self._session_state.demo_events.append(event)
-        message: ChatCommand = {"type": "sendAssistantInput", "message": text}
-        self._session_state.evi_commands.append(message)
+
+    def trigger_evi_speech(self, text: str):
+        command: ChatCommand = {"type": "sendAssistantInput", "message": text}
+        self._session_state.evi_commands.append(command)
 
     def add_error(self, error: Any):
         message: DemoEvent = {"type": "error", "error": error}
