@@ -112,31 +112,19 @@ async def main():
             st.session_state.asyncio_thread.loop
         )
 
-    # Process results from the queue
-    should_rerun = False
     while not state.worker_queue.empty():
         result = state.worker_queue.get()
         print(f"Processing result: {result}")
         length_before = len(state.demo_events)
         message_should_rerun = process_computer_use_event(state, result)
-        should_rerun = should_rerun or message_should_rerun
         length_after = len(state.demo_events)
         print(f"Processed result. Added {length_after - length_before} messages:")
         print('  \n'.join([str(x) for x in state.demo_events[-(length_after - length_before):]]))
         print('')
         print(f"The cursor is at {state.worker_cursor} the history length is {len(state.demo_events)}, and the worker is {'running' if state.worker_running else 'not running'}")
 
-    if should_rerun:
-            st.rerun()
-    else: 
-        print("Not rerunning.")
-
-    print("Queue emptied, polling.")
-    while True:
-        await asyncio.sleep(0.1)
-        if not st.session_state.worker_queue.empty():
-            print("Got a message, rerunning...")
-            st.rerun()
+    await asyncio.sleep(0.1)
+    st.rerun()
 
 def validate_auth(provider: APIProvider, api_key: str | None):
     if provider == APIProvider.ANTHROPIC:
