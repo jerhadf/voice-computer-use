@@ -82,8 +82,11 @@ const useInteractivity = ({
   }
 
   const [cursor, setCursor] = React.useState(0)
-  const newCommands = commands.slice(cursor, commands.length)
   useEffect(() => {
+    if (cursor > commands.length) {
+      setCursor(0)
+    }
+    const newCommands = commands.slice(cursor, commands.length)
     newCommands.forEach((command) => dispatchCommand(command))
     setCursor(commands.length)
   }, [commands])
