@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Literal, Optional, TypedDict, assert_never
 from anthropic.types.beta import BetaMessageParam, BetaToolResultBlockParam
 from streamlit.runtime.state import SessionStateProxy
 
+from computer_use_demo.evi_chat_component import ChatCommand
 from computer_use_demo.tools import ToolResult
 
 from anthropic.types.beta import (
@@ -196,12 +197,12 @@ class State:
             session_state.only_n_most_recent_images = 10
         if "is_recording" not in session_state:
             session_state.is_recording = False
-        if 'evi_assistant_paused' not in session_state:
-            session_state['evi_assistant_paused'] = None
+        if 'evi_commands' not in session_state:
+            session_state['evi_commands'] = []
         if 'anthropic_response_pending_tool_use' not in session_state:
             session_state.anthropic_response_pending_tool_use = None
-        if 'evi_chat_cursor' not in session_state:
-            session_state.evi_chat_cursor = 0
+        if 'evi_cursor' not in session_state:
+            session_state.evi_cursor = 0
         if 'worker_queue' not in session_state:
             session_state.worker_queue = WorkerQueue(Queue())
         if 'worker_cursor' not in session_state:
@@ -218,13 +219,13 @@ class State:
             return self._session_state.demo_events[-1]
         return None
 
-    def add_user_input(self, text: str):
+    def send_user_input(self, text: str):
         message: DemoEvent = {"type": "user_input", "text": text}
         self._session_state.demo_events.append(message)
 
-    def add_assistant_output(self, text: str):
-        message: DemoEvent = {"type": "assistant_output", "text": text}
-        self._session_state.demo_events.append(message)
+    def send_assistant_input(self, text: str):
+        message: ChatCommand = {"type": "sendAssistantInput", "message": text}
+        self._session_state.evi_commands.append(message)
 
     def add_error(self, error: Any):
         message: DemoEvent = {"type": "error", "error": error}
@@ -254,21 +255,22 @@ class State:
     def add_tool_use_response(self, tool_use_id: str, tool_result: ToolResult):
         self.tool_use_responses[tool_use_id] = tool_result
 
-    @property
-    def evi_assistant_paused(self) -> bool:
-        return self._session_state.evi_assistant_paused
-
-    @evi_assistant_paused.setter
-    def evi_assistant_paused(self, value: bool):
-        self._session_state.evi_assistant_paused = value
+    def pause_evi(self):
+        command: ChatCommand = {"type": "pauseAssistant"}
+        self._session_state.evi_commands.append(command)
 
     @property
-    def evi_chat_cursor(self) -> int:
-        return self._session_state.evi_chat_cursor
+    def evi_cursor(self) -> int:
+        return self._session_state.evi_cursor
 
-    @evi_chat_cursor.setter
-    def evi_chat_cursor(self, value: int):
-        self._session_state.evi_chat_cursor = value
+    @evi_cursor.setter
+    def evi_cursor(self, value: int):
+        self._session_state.evi_cursor = value
+
+    @property
+    def evi_commands(self) -> List[ChatCommand]:
+        return self._session_state.evi_commands
+
 
     @property
     def worker_cursor(self) -> int:

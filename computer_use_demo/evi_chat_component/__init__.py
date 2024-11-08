@@ -33,30 +33,50 @@ class ErrorEvent(TypedDict):
 
 ChatEvent = Union[MessageEvent, ClosedEvent, OpenedEvent, ErrorEvent]
 
+class ChatCommandToggle(TypedDict):
+    type: Literal[
+        'mute',
+        'unmute',
+        'pauseAssistant',
+        'resumeAssistant',
+        'muteAudio',
+        'unmuteAudio'
+    ]
+
+class ChatCommandSendUserInput(TypedDict):
+    type: Literal['sendUserInput']
+    message: Any  # Replace Any with the actual parameter type if known
+
+class ChatCommandSendAssistantInput(TypedDict):
+    type: Literal['sendAssistantInput']
+    message: Any  # Replace Any with the actual parameter type if known
+
+class ChatCommandSendSessionSettings(TypedDict):
+    type: Literal['sendSessionSettings']
+    message: Any  # Replace Any with the actual parameter type if known
+
+class ChatCommandSendToolMessage(TypedDict):
+    type: Literal['sendToolMessage']
+    message: Any  # Replace Any with the actual parameter type if known
+
+ChatCommand = Union[
+    ChatCommandToggle,
+    ChatCommandSendUserInput,
+    ChatCommandSendAssistantInput,
+    ChatCommandSendSessionSettings,
+    ChatCommandSendToolMessage
+]
+
 
 def empathic_voice_chat(
     *,
     hume_api_key: str,
-    muted: bool = False,
-    assistant_paused: bool = False,
-    assistant_audio_muted=False,
-    user_input_message: Optional[str] = None,
-    assistant_input_message: Optional[str] = None,
-    session_settings_message: Optional[Any] = None,
-    tool_response_message: Optional[Any] = None,
-    tool_error_message: Optional[Any] = None,
+    commands: List[ChatCommand],
     key=None,
 ) -> List[ChatEvent]:
     component_value = _component_func(
         hume_api_key=hume_api_key,
-        muted=muted,
-        assistant_paused=assistant_paused,
-        assistant_audio_muted=assistant_audio_muted,
-        user_input_message=user_input_message,
-        assistant_input_message=assistant_input_message,
-        session_settings_message=session_settings_message,
-        tool_response_message=tool_response_message,
-        tool_error_message=tool_error_message,
+        commands=commands,
         key=key,
         default=None)
 

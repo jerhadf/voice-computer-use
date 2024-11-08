@@ -86,7 +86,7 @@ async def main():
                                   state=state)
 
     for new_message in new_messages:
-        state.add_user_input(new_message)
+        state.send_user_input(new_message)
 
     st.code("\n".join([m.__repr__() for m in state.demo_events]))
 
@@ -165,18 +165,6 @@ def save_to_storage(filename: str, data: str) -> None:
     except Exception as e:
         st.write(f"Debug: Error saving {filename}: {e}")
 
-
-def _hume_get_assistant_input_message(state: State) -> Optional[str]:
-    assistant_messages = [
-        message for message in state.demo_events
-        if message['type'] == "assistant_output"
-    ]
-    if not assistant_messages:
-        return None
-
-    return assistant_messages[-1]['text']
-
-
 def _hume_pause_evi(state):
     state.evi_assistant_paused = True
 
@@ -198,16 +186,14 @@ def _hume_evi_chat(*, state: State,
     new_events = []
     events = empathic_voice_chat(
         key="evi_chat",
-        hume_api_key=hume_api_key,
-        assistant_input_message=_hume_get_assistant_input_message(state),
-        assistant_paused=state.evi_assistant_paused,
-        user_input_message=user_input_message) or []
+        commands=state.evi_commands,
+        hume_api_key=hume_api_key) or []
 
     st.code(events)
 
-    if state.evi_chat_cursor < len(events):
-        new_events = events[state.evi_chat_cursor:]
-        state.evi_chat_cursor = len(events)
+    if state.evi_cursor < len(events):
+        new_events = events[state.evi_cursor:]
+        state.evi_cursor = len(events)
 
 
     ret = []

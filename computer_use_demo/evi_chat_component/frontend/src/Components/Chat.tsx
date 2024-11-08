@@ -11,29 +11,27 @@ import StartCall from "./StartCall"
 import Controls from "./Controls"
 
 type UseVoiceReturn = ReturnType<typeof useVoice>
+type Command = {
+  type: 'mute' | 'unmute' | 'pauseAssistant' | 'resumeAssistant' | 'muteAudio' | 'unmuteAudio'
+} | {
+  type: 'sendUserInput',
+  message: Parameters<UseVoiceReturn["sendUserInput"]>[0]
+} | {
+  type: 'sendAssistantInput',
+  message: Parameters<UseVoiceReturn["sendAssistantInput"]>[0]
+} | {
+  type: 'sendSessionSettings',
+  message: Parameters<UseVoiceReturn["sendSessionSettings"]>[0]
+} | {
+  type: 'sendToolMessage',
+  message: Parameters<UseVoiceReturn["sendToolMessage"]>[0]
+}
+
 type InteractivityProps = {
-  muted: boolean
-  assistant_paused: boolean
-  assistant_audio_muted: boolean
-  user_input_message: Parameters<UseVoiceReturn["sendUserInput"]>[0] | null
-  assistant_input_message:
-    | Parameters<UseVoiceReturn["sendAssistantInput"]>[0]
-    | null
-  session_settings_message:
-    | Parameters<UseVoiceReturn["sendSessionSettings"]>[0]
-    | null
-  tool_response_message: Hume.empathicVoice.ToolResponseMessage
-  tool_error_message: Hume.empathicVoice.ToolErrorMessage
+  commands: Command[]
 }
 const useInteractivity = ({
-  muted,
-  assistant_paused,
-  assistant_audio_muted,
-  user_input_message,
-  assistant_input_message,
-  session_settings_message,
-  tool_response_message,
-  tool_error_message,
+  commands,
 }: InteractivityProps) => {
   const {
     mute,
@@ -48,38 +46,48 @@ const useInteractivity = ({
     resumeAssistant,
   } = useVoice()
 
-  const useMessageSender = <TMessage,>(
-    message: TMessage | null,
-    sendFn: (message: TMessage) => void
-  ) => {
-    useEffect(() => {
-      if (!message) return
-      sendFn(message)
-    }, [message])
+  const dispatchCommand = (command: Command) => {
+    switch (command.type) {
+      case 'mute':
+        mute()
+        return
+      case 'unmute':
+        unmute()
+        return
+      case 'pauseAssistant':
+        pauseAssistant()
+        return
+      case 'resumeAssistant':
+        resumeAssistant()
+        return
+      case 'muteAudio':
+        muteAudio()
+        return
+      case 'unmuteAudio':
+        unmuteAudio()
+        return
+      case 'sendUserInput':
+        sendUserInput(command.message)
+        return
+      case 'sendAssistantInput':
+        sendAssistantInput(command.message)
+        return
+      case 'sendSessionSettings':
+        sendSessionSettings(command.message)
+        return
+      case 'sendToolMessage':
+        sendToolMessage(command.message)
+        return
+    }
   }
 
-  useMessageSender(user_input_message, sendUserInput)
-  useMessageSender(assistant_input_message, sendAssistantInput)
-  useMessageSender(session_settings_message, sendSessionSettings)
-  useMessageSender(tool_response_message, sendToolMessage)
-  useMessageSender(tool_error_message, sendToolMessage)
+  const [cursor, setCursor] = React.useState(0)
+  const newCommands = commands.slice(cursor, commands.length)
+  useEffect(() => {
+    newCommands.forEach((command) => dispatchCommand(command))
+    setCursor(commands.length)
+  }, [commands])
 
-  const useToggleCommand = (
-    state: boolean,
-    enableFn: () => void,
-    disableFn: () => void
-  ) => {
-    useEffect(() => {
-      if (state) {
-        enableFn()
-      } else {
-        disableFn()
-      }
-    }, [state])
-  }
-  useToggleCommand(muted, mute, unmute)
-  useToggleCommand(assistant_paused, pauseAssistant, resumeAssistant)
-  useToggleCommand(assistant_audio_muted, muteAudio, unmuteAudio)
 }
 
 const InteractiveChat = (props: ComponentProps) => {
