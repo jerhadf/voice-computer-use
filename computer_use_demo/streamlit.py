@@ -191,7 +191,7 @@ def _hume_evi_chat(*, state: State) -> List[str]:
 
     ret = []
     for event in new_events:
-        if event['type'] == 'opened':
+        if event['type'] == 'message' and event['message']['type'] == 'chat_metadata':
             state.pause_evi()
             continue
 
