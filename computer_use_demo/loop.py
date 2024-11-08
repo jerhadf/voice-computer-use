@@ -8,6 +8,7 @@ from anthropic import Anthropic
 from anthropic.types.beta import (
     BetaMessage,
     BetaToolParam,
+BetaMessageParam
 )
 from pydantic.utils import assert_never
 
@@ -59,12 +60,12 @@ async def phone_anthropic(
         f"{SYSTEM_PROMPT}{' ' + system_prompt_suffix if system_prompt_suffix else ''}"
     )
 
-    messages = group_tool_message_params([
+    messages = _maybe_filter_to_n_most_recent_images(messages=group_tool_message_params([
         x for x in [
             to_beta_message_param(message)
             for message in demo_events
         ] if x
-    ])
+    ]), images_to_keep=only_n_most_recent_images)
     tools = cast(list[BetaToolParam], tool_collection.to_params())
 
     raw_response = Anthropic(
@@ -78,6 +79,54 @@ async def phone_anthropic(
         )
     response = raw_response.parse()
     return response
+
+def _maybe_filter_to_n_most_recent_images(
+    messages: list[BetaMessageParam],
+    images_to_keep: int,
+    min_removal_threshold: int = 10,
+):
+    """
+    With the assumption that images are screenshots that are of diminishing value as
+    the conversation progresses, remove all but the final `images_to_keep` tool_result
+    images in place, with a chunk of min_removal_threshold to reduce the amount we
+    break the implicit prompt cache.
+    """
+    if images_to_keep is None:
+        return messages
+
+    tool_result_blocks = cast(
+        list[ToolResultBlockParam],
+        [
+            item
+            for message in messages
+            for item in (
+                message["content"] if isinstance(message["content"], list) else []
+            )
+            if isinstance(item, dict) and item.get("type") == "tool_result"
+        ],
+    )
+
+    total_images = sum(
+        1
+        for tool_result in tool_result_blocks
+        for content in tool_result.get("content", [])
+        if isinstance(content, dict) and content.get("type") == "image"
+    )
+
+    images_to_remove = total_images - images_to_keep
+    # for better cache behavior, we want to remove in chunks
+    images_to_remove -= images_to_remove % min_removal_threshold
+
+    for tool_result in tool_result_blocks:
+        if isinstance(tool_result.get("content"), list):
+            new_content = []
+            for content in tool_result.get("content", []):
+                if isinstance(content, dict) and content.get("type") == "image":
+                    if images_to_remove > 0:
+                        images_to_remove -= 1
+                        continue
+                new_content.append(content)
+            tool_result["content"] = new_content
 
 def process_computer_use_event(state: State, result: WorkerEvent):
     """Updates the state based on the result from the background thread."""
