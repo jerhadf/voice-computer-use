@@ -6,7 +6,6 @@ import {
 } from "streamlit-component-lib"
 import React, { ReactNode, useEffect } from "react"
 import { VoiceProvider, useVoice } from "@humeai/voice-react"
-import { type Hume } from "hume"
 import StartCall from "./StartCall"
 import Controls from "./Controls"
 
@@ -108,11 +107,11 @@ const InteractiveChat = (props: ComponentProps) => {
     )
   }
   return (
-    <>
+    <div>
       {commandHistory}
       <Controls />,
       <StartCall />
-    </>
+    </div>
   )
 }
 type Listenable = `message.${Parameters<NonNullable<VoiceProviderParam["onMessage"]>>[0]['type']}` | ChatEvent["type"]
