@@ -159,8 +159,6 @@ def save_to_storage(filename: str, data: str) -> None:
     except Exception as e:
         st.write(f"Debug: Error saving {filename}: {e}")
 
-def _hume_pause_evi(state):
-    state.evi_assistant_paused = True
 
 def _hume_evi_chat(*, state: State,
                    user_input_message: Optional[str]) -> List[str]:
@@ -178,8 +176,6 @@ def _hume_evi_chat(*, state: State,
         return []
 
     new_events = []
-    if len(state.evi_commands) == 0:
-        state.pause_evi()
     events = empathic_voice_chat(
         key="evi_chat",
         commands=state.evi_commands,
@@ -195,7 +191,7 @@ def _hume_evi_chat(*, state: State,
     ret = []
     for event in new_events:
         if event['type'] == 'opened':
-            _hume_pause_evi(state)
+            state.pause_evi()
             continue
 
         if event['type'] == 'message':

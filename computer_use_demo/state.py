@@ -220,10 +220,12 @@ class State:
         return None
 
     def send_user_input(self, text: str):
-        message: DemoEvent = {"type": "user_input", "text": text}
-        self._session_state.demo_events.append(message)
+        message: ChatCommand = {"type": "sendUserInput", "message": text}
+        self._session_state.evi_commands.append(message)
 
     def send_assistant_input(self, text: str):
+        event: DemoEvent = {"type": "assistant_output", "text": text}
+        self._session_state.demo_events.append(event)
         message: ChatCommand = {"type": "sendAssistantInput", "message": text}
         self._session_state.evi_commands.append(message)
 
