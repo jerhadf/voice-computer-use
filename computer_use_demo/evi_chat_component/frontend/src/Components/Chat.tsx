@@ -84,19 +84,31 @@ const useInteractivity = ({
   const [cursor, setCursor] = React.useState(0)
   useEffect(() => {
     if (cursor > commands.length) {
+      // The session got reset?
       setCursor(0)
     }
     const newCommands = commands.slice(cursor, commands.length)
     newCommands.forEach((command) => dispatchCommand(command))
     setCursor(commands.length)
   }, [commands])
-
+  return cursor
 }
 
 const InteractiveChat = (props: ComponentProps) => {
-  useInteractivity(props.args)
+  const cursor = useInteractivity(props.args)
+  let commandHistory = null;
+  if (props.args.commands.length > 1) {
+    const before = props.args.commands.slice(0, cursor - 1)
+    const at = props.args.commands[cursor - 1]
+    const after = props.args.commands.slice(cursor - 1, props.args.commands.length)
+    const history = `${before.map(c => c.type).join(', ')} ${JSON.stringify(at)} ${after.map(c => c.type).join(', ')}`
+    commandHistory = (
+      <pre>{history}</pre>
+    )
+  }
   return (
     <>
+      {commandHistory}
       <Controls />,
       <StartCall />
     </>
