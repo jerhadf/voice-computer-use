@@ -82,11 +82,13 @@ async def main():
     user_input_message = st.chat_input(
         "Type or speak a message to control the computer...")
 
-    new_messages = _hume_evi_chat(user_input_message=user_input_message,
-                                  state=state)
+    if user_input_message:
+        state.add_user_input(user_input_message)
+
+    new_messages = _hume_evi_chat(state=state)
 
     for new_message in new_messages:
-        state.send_user_input(new_message)
+        state.add_user_input(new_message)
 
     st.code("\n".join([m.__repr__() for m in state.demo_events]))
 
@@ -160,8 +162,7 @@ def save_to_storage(filename: str, data: str) -> None:
         st.write(f"Debug: Error saving {filename}: {e}")
 
 
-def _hume_evi_chat(*, state: State,
-                   user_input_message: Optional[str]) -> List[str]:
+def _hume_evi_chat(*, state: State) -> List[str]:
     """
     Renders the EVI chat, handles commands to EVI that are passed in through
     the session state, and acts on messages received from EVI. Returns a string
