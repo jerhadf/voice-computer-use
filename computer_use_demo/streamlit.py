@@ -112,7 +112,10 @@ async def main():
             st.session_state.asyncio_thread.loop
         )
 
-    while not state.worker_queue.empty():
+    while True:
+        if state.worker_queue.empty():
+            await asyncio.sleep(0.1)
+            continue
         result = state.worker_queue.get()
         print(f"Processing result: {result}")
         length_before = len(state.demo_events)
@@ -123,8 +126,6 @@ async def main():
         print('')
         print(f"The cursor is at {state.worker_cursor} the history length is {len(state.demo_events)}, and the worker is {'running' if state.worker_running else 'not running'}")
 
-    await asyncio.sleep(0.1)
-    st.rerun()
 
 def validate_auth(provider: APIProvider, api_key: str | None):
     if provider == APIProvider.ANTHROPIC:
