@@ -1,33 +1,26 @@
-"""
-Entrypoint for streamlit, see https://docs.streamlit.io/
-"""
-
-import asyncio
-import base64
-import os
 from enum import StrEnum
-from pathlib import PosixPath
-from typing import List, Optional, assert_never
-
+from typing import List, Optional
 import streamlit as st
+import threading
+import asyncio
+import time
+from queue import Queue
 
-from computer_use_demo.state import DemoEvent, State
+from computer_use_demo.state import DemoEvent, State, WorkerQueue
 from .evi_chat_component import ChatEvent as EviEvent, empathic_voice_chat
 
 from computer_use_demo.loop import (
     PROVIDER_TO_DEFAULT_MODEL_NAME,
     APIProvider,
-    iterate_sampling_loop,
+    run_worker,
+    process_computer_use_event,
 )
 from computer_use_demo.tools import ToolResult
+import os
+from pathlib import PosixPath
+import base64
 
-# This line is necessary so that Streamlit keeps the same evi chat component
-# and doesn't decide to discard the old one and render a new one when the arguments
-# change.
-if 'evi_chat' not in st.session_state:
-    st.session_state['evi_chat'] = None
-st.session_state['evi_chat'] = st.session_state['evi_chat']
-
+# Define constants and configurations
 CONFIG_DIR = PosixPath("~/.anthropic").expanduser()
 API_KEY_FILE = CONFIG_DIR / "api_key"
 STREAMLIT_STYLE = """
@@ -44,13 +37,12 @@ STREAMLIT_STYLE = """
 </style>
 """
 
-
 class Sender(StrEnum):
     USER = "user"
     BOT = "assistant"
     TOOL = "tool"
 
-
+# Initialize global variables
 PROVIDER = APIProvider.ANTHROPIC
 MODEL = PROVIDER_TO_DEFAULT_MODEL_NAME[PROVIDER]
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
@@ -58,28 +50,36 @@ CUSTOM_SYSTEM_PROMPT = ""
 ONLY_N_MOST_RECENT_IMAGES = 10
 HIDE_IMAGES = False
 
+# Define the background thread class
+class AsyncioThread(threading.Thread):
+    def __init__(self, queue):
+        super().__init__(daemon=True)
+        self.loop = asyncio.new_event_loop()
+        self.queue = queue
 
-# session_state is untyped, this is a type-safe wrapper around
-# session state to make it a little easier to manage and refactor
+    def run(self):
+        asyncio.set_event_loop(self.loop)
+        self.loop.run_forever()
+
+# Start the asyncio event loop in a background thread only once
+if 'worker_queue' not in st.session_state:
+    st.session_state.worker_queue = WorkerQueue(Queue())
+if 'asyncio_thread' not in st.session_state:
+    st.session_state.asyncio_thread = AsyncioThread(st.session_state.worker_queue)
+    st.session_state.asyncio_thread.start()
+
 async def main():
-    """Render loop for streamlit"""
+    """Render loop for Streamlit."""
     print("Rerunning...")
-    if "firefox" not in st.session_state:
-        st.session_state.firefox = await asyncio.create_subprocess_exec(
-            "firefox")
-
-    State.setup_state(st.session_state)
-
     state = State(st.session_state)
 
     st.markdown(STREAMLIT_STYLE, unsafe_allow_html=True)
-
     st.title("Computer Control Interface")
 
     if auth_error := validate_auth(PROVIDER, ANTHROPIC_API_KEY):
         st.warning(f"Please resolve the following auth issue:\n\n{auth_error}")
 
-    # Continue with rest of Streamlit UI
+    # Handle user input
     user_input_message = st.chat_input(
         "Type or speak a message to control the computer...")
 
@@ -94,18 +94,49 @@ async def main():
     for chat_event in state.demo_events:
         _render_chat_event(chat_event)
 
+    if not state.worker_running:
+        print("Starting worker...")
+        # Schedule the async task onto the background event loop
+        state.worker_running = True
+        asyncio.run_coroutine_threadsafe(
+            run_worker(
+                demo_events=state.demo_events,
+                cursor=state.worker_cursor,
+                system_prompt_suffix=CUSTOM_SYSTEM_PROMPT,
+                model=MODEL,
+                api_key=ANTHROPIC_API_KEY,
+                only_n_most_recent_images=ONLY_N_MOST_RECENT_IMAGES,
+                max_tokens=4096,
+                worker_queue=state.worker_queue
+            ),
+            st.session_state.asyncio_thread.loop
+        )
 
-    with st.spinner("Running Agent..."):
-        await iterate_sampling_loop(
-            state=state,
-            system_prompt_suffix=CUSTOM_SYSTEM_PROMPT,
-            model=MODEL,
-            api_key=ANTHROPIC_API_KEY,
-            only_n_most_recent_images=ONLY_N_MOST_RECENT_IMAGES)
+    # Process results from the queue
+    should_rerun = False
+    while not state.worker_queue.empty():
+        result = state.worker_queue.get()
+        print(f"Processing result: {result}")
+        length_before = len(state.demo_events)
+        message_should_rerun = process_computer_use_event(state, result)
+        should_rerun = should_rerun or message_should_rerun
+        length_after = len(state.demo_events)
+        print(f"Processed result. Added {length_after - length_before} messages:")
+        print('  \n'.join([str(x) for x in state.demo_events[-(length_after - length_before):]]))
+        print('')
+        print(f"The cursor is at {state.worker_cursor} the history length is {len(state.demo_events)}, and the worker is {'running' if state.worker_running else 'not running'}")
 
-        if state.anthropic_api_cursor < len(state.demo_events):
+    if should_rerun:
             st.rerun()
+    else: 
+        print("Not rerunning.")
 
+    print("Queue emptied, polling.")
+    while True:
+        await asyncio.sleep(0.1)
+        if not st.session_state.worker_queue.empty():
+            print("Got a message, rerunning...")
+            st.rerun()
 
 def validate_auth(provider: APIProvider, api_key: str | None):
     if provider == APIProvider.ANTHROPIC:
@@ -235,6 +266,7 @@ def _render_chat_event(chat_event: DemoEvent):
                 st.image(base64.b64decode(result.base64_image))
             if result.error:
                 st.error(result.error)
+
 
 if __name__ == "__main__":
     asyncio.run(main())

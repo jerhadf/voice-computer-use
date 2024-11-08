@@ -1,5 +1,6 @@
+from queue import Queue
 from typing import Any, Dict, List, Literal, Optional, TypedDict, assert_never
-from anthropic.types.beta import BetaMessage, BetaMessageParam, BetaToolResultBlockParam
+from anthropic.types.beta import BetaMessageParam, BetaToolResultBlockParam
 from streamlit.runtime.state import SessionStateProxy
 
 from computer_use_demo.tools import ToolResult
@@ -11,35 +12,33 @@ from anthropic.types.beta import (
     BetaToolResultBlockParam,
 )
 
+EventStatus = Literal['queued', 'pending', 'complete', 'canceled']
 
-class UserInputEvent(TypedDict):
+class DemoEventUserInput(TypedDict):
     type: Literal['user_input']
     text: str
 
-
-class AssistantOutputEvent(TypedDict):
+class DemoEventAssistantOutput(TypedDict):
     type: Literal['assistant_output']
     text: str
 
-
-class ToolUseEvent(TypedDict):
+class DemoEventToolUse(TypedDict):
+    type: Literal['tool_use']
     id: str
     input: dict[str, Any]
     name: str
-    type: Literal['tool_use']
 
-
-class ToolResultEvent(TypedDict):
+class DemoEventToolResult(TypedDict):
     type: Literal['tool_result']
     result: ToolResult
     tool_use_id: str
 
-class ErrorEvent(TypedDict):
+class DemoEventError(TypedDict):
     type: Literal['error']
     error: Any
 
 
-DemoEvent = UserInputEvent | AssistantOutputEvent | ToolUseEvent | ToolResultEvent | ErrorEvent
+DemoEvent = DemoEventUserInput | DemoEventAssistantOutput | DemoEventToolUse | DemoEventToolResult | DemoEventError
 
 
 def _maybe_prepend_system_tool_result(result: ToolResult, result_text: str):
@@ -82,8 +81,6 @@ def _make_api_tool_result(result: ToolResult,
         "is_error": is_error,
     }
 
-
-
 def group_tool_message_params(events: List[BetaMessageParam]) -> List[BetaMessageParam]:
     if not events:
         return []
@@ -112,13 +109,6 @@ def group_tool_message_params(events: List[BetaMessageParam]) -> List[BetaMessag
         last_content.append(content)
         ret[-1]['content'] = last_content
     return ret
-
-
-
-
-
-
-
 
 def to_beta_message_param(event: DemoEvent) -> Optional[BetaMessageParam]:
     if event['type'] == 'user_input':
@@ -155,12 +145,44 @@ def to_beta_message_param(event: DemoEvent) -> Optional[BetaMessageParam]:
         return None
     assert_never(event)
 
+class WorkerEventToolResult(TypedDict):
+    type: Literal['tool_result']
+    tool_result: ToolResult
+    tool_use_id: str
+
+class WorkerEventAnthropicResponse(TypedDict):
+    type: Literal['anthropic_response']
+    response: BetaMessage
+
+class WorkerEventError(TypedDict):
+    type: Literal['error']
+    error: str
+
+class WorkerEventFinished(TypedDict):
+    type: Literal['finished']
+    cursor: int
+
+WorkerEvent = WorkerEventToolResult | WorkerEventAnthropicResponse | WorkerEventError | WorkerEventFinished
+
+# Type safety around the generic Queue
+class WorkerQueue():
+    _queue: Queue
+    def __init__(self, queue):
+        self._queue = queue
+    def put(self, event: WorkerEvent):
+        self._queue.put(event)
+    def empty(self) -> bool:
+        return self._queue.empty()
+    def get(self) -> WorkerEvent:
+        return self._queue.get()
+
 
 class State:
     _session_state: SessionStateProxy
 
     def __init__(self, session_state: SessionStateProxy):
         self._session_state = session_state
+        State.setup_state(session_state)
 
     @staticmethod
     def setup_state(session_state: SessionStateProxy):
@@ -180,8 +202,12 @@ class State:
             session_state.anthropic_response_pending_tool_use = None
         if 'evi_chat_cursor' not in session_state:
             session_state.evi_chat_cursor = 0
-        if 'anthropic_api_cursor' not in session_state:
-            session_state.anthropic_api_cursor = 0
+        if 'worker_queue' not in session_state:
+            session_state.worker_queue = WorkerQueue(Queue())
+        if 'worker_cursor' not in session_state:
+            session_state.worker_cursor = 0
+        if 'worker_running' not in session_state:
+            session_state.worker_running = False
 
     @property
     def demo_events(self) -> List[DemoEvent]:
@@ -209,26 +235,17 @@ class State:
             "id": id,
             "input": input,
             "name": name,
-            "type": "tool_use"
+            "type": "tool_use",
         }
         self._session_state.demo_events.append(message)
 
     def add_tool_result(self, tool_result: ToolResult, tool_use_id: str):
-        message: DemoEvent = {
+        message: DemoEventToolResult = {
             "type": "tool_result",
             "result": tool_result,
-            "tool_use_id": tool_use_id
+            "tool_use_id": tool_use_id,
         }
         self._session_state.demo_events.append(message)
-
-    @property
-    def anthropic_response_pending_tool_use(self) -> Optional[BetaMessage]:
-        return self._session_state.anthropic_response_pending_tool_use
-
-    @anthropic_response_pending_tool_use.setter
-    def anthropic_response_pending_tool_use(self,
-                                            value: Optional[BetaMessage]):
-        self._session_state.anthropic_response_pending_tool_use = value
 
     @property
     def tool_use_responses(self) -> Dict[str, ToolResult]:
@@ -254,9 +271,21 @@ class State:
         self._session_state.evi_chat_cursor = value
 
     @property
-    def anthropic_api_cursor(self) -> int:
-        return self._session_state.anthropic_api_cursor
+    def worker_cursor(self) -> int:
+        return self._session_state.worker_cursor
 
-    @anthropic_api_cursor.setter
-    def anthropic_api_cursor(self, value: int):
-        self._session_state.anthropic_api_cursor = value
+    @worker_cursor.setter
+    def worker_cursor(self, value: int):
+        self._session_state.worker_cursor = value
+
+    @property
+    def worker_running(self) -> bool:
+        return self._session_state.worker_running
+
+    @worker_running.setter
+    def worker_running(self, value: bool):
+        self._session_state.worker_running = value
+
+    @property
+    def worker_queue(self) -> WorkerQueue:
+        return self._session_state.worker_queue

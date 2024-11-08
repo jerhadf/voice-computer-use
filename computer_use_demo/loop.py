@@ -1,12 +1,8 @@
-"""
-Agentic sampling loop that calls the Anthropic API and local implenmentation of anthropic-defined computer use tools.
-"""
-
 import platform
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, cast
-import time
+from queue import Queue
+from typing import Any, Dict, Literal, Optional, TypedDict, cast
 
 from anthropic import Anthropic
 from anthropic.types.beta import (
@@ -15,18 +11,17 @@ from anthropic.types.beta import (
 )
 from pydantic.utils import assert_never
 
-from computer_use_demo.state import State, group_tool_message_params, to_beta_message_param
+from computer_use_demo.state import DemoEvent, State, WorkerEvent, WorkerEventAnthropicResponse, WorkerQueue, group_tool_message_params, to_beta_message_param
+from computer_use_demo.tools.base import ToolResult
 
 from .tools import BashTool, ComputerTool, EditTool, ToolCollection
 
 BETA_FLAG = "computer-use-2024-10-22"
 
-
 class APIProvider(StrEnum):
     ANTHROPIC = "anthropic"
     BEDROCK = "bedrock"
     VERTEX = "vertex"
-
 
 PROVIDER_TO_DEFAULT_MODEL_NAME: dict[APIProvider, str] = {
     APIProvider.ANTHROPIC: "claude-3-5-sonnet-20241022",
@@ -34,13 +29,8 @@ PROVIDER_TO_DEFAULT_MODEL_NAME: dict[APIProvider, str] = {
     APIProvider.VERTEX: "claude-3-5-sonnet-v2@20241022",
 }
 
-# This system prompt is optimized for the Docker environment in this repository and
-# specific tool combinations enabled.
-# We encourage modifying this system prompt to ensure the model has context for the
-# environment it is running in, and to provide any additional information that may be
-# helpful for the task at hand.
 SYSTEM_PROMPT = f"""<SYSTEM_CAPABILITY>
-* You are utilising an Linux computer using {platform.machine()} architecture with internet access.
+* You are utilizing a Linux computer using {platform.machine()} architecture with internet access.
 * Firefox will be started for you.
 * Using bash tool you can start GUI applications. GUI apps run with bash tool will appear within your desktop environment, but they may take some time to appear. Take a screenshot to confirm it did.
 * When using your bash tool with commands that are expected to output very large quantities of text, redirect into a tmp file and use str_replace_editor or `grep -n -B <lines before> -A <lines after> <query> <filename>` to confirm output.
@@ -55,15 +45,14 @@ SYSTEM_PROMPT = f"""<SYSTEM_CAPABILITY>
 * When viewing a webpage, first use your computer tool to view it and explore it.  But, if there is a lot of text on that page, instead curl the html of that page to a file on disk and then using your StrReplaceEditTool to view the contents in plain text.
 </IMPORTANT>"""
 
-
-def phone_anthropic(
+async def phone_anthropic(
     *,
-    state: State,
+    demo_events: list[DemoEvent],
     tool_collection: ToolCollection,
     model: str,
     system_prompt_suffix: str,
     api_key: str,
-    only_n_most_recent_images: int | None,
+    only_n_most_recent_images: Optional[int],
     max_tokens: int,
 ) -> BetaMessage:
     system = (
@@ -73,14 +62,11 @@ def phone_anthropic(
     messages = group_tool_message_params([
         x for x in [
             to_beta_message_param(message)
-            for message in state.demo_events[:state.anthropic_api_cursor + 1]
+            for message in demo_events
         ] if x
     ])
     tools = cast(list[BetaToolParam], tool_collection.to_params())
 
-    print("starting anthropic call...")
-    # The problem is right here. Apparently, in the middle of while this is going on, Streamlit reruns
-    # (in response to a widget update of evi_chat)
     raw_response = Anthropic(
         api_key=api_key).beta.messages.with_raw_response.create(
             max_tokens=max_tokens,
@@ -90,56 +76,49 @@ def phone_anthropic(
             tools=tools,
             extra_headers={"anthropic-beta": BETA_FLAG},
         )
-    # and we never reach here.
-    # We need some way of preventing streamlit from rerunning while the request is in flight, or
-    # some way of making this request happen in another thread or something that can't be interrupted
-    print("finishing anthropic call...")
-
     response = raw_response.parse()
-
-    for content_block in response.content:
-        if content_block.type == "tool_use":
-            state.add_tool_use(
-                id=content_block.id,
-                input=cast(dict[str, Any], content_block.input),
-                name=content_block.name,
-            )
-        elif content_block.type == "text":
-            state.add_assistant_output(content_block.text)
-
     return response
 
+def process_computer_use_event(state: State, result: WorkerEvent) -> bool:
+    """Updates the state based on the result from the background thread."""
+    print("Inside here")
+    if result['type'] == 'anthropic_response':
+        response = result['response']
+        for content_block in response.content:
+            if content_block.type == "tool_use":
+                state.add_tool_use(
+                    id=content_block.id,
+                    input=cast(dict[str, Any], content_block.input),
+                    name=content_block.name,
+                )
+            elif content_block.type == "text":
+                state.add_assistant_output(content_block.text)
+        return True
+    if result['type'] == 'tool_result':
+      state.add_tool_result(result['tool_result'], result['tool_use_id'])
+      return True
+    if result['type'] == 'finished':
+        print("Worker finished at cursor", result['cursor'])
+        state.worker_running = False
+        state.worker_cursor = result['cursor']
+        return False
+    elif result['type'] == 'error':
+        state.add_error(result['error'])
+        return True
+    else:
+        assert_never(result)
 
-async def use_tools(
+async def run_worker(
     *,
-    state: State,
-    tool_collection: ToolCollection,
-    response: BetaMessage,
-) -> bool:
-    is_done = True
-    for content_block in response.content:
-        if content_block.type == "tool_use":
-            print("Running tool collection...")
-            result = await tool_collection.run(
-                name=content_block.name,
-                tool_input=cast(dict[str, Any], content_block.input),
-            )
-            print("Adding tool result...")
-            state.add_tool_result(result, content_block.id)
-            is_done = False
-
-    return is_done
-
-
-async def iterate_sampling_loop(
-    *,
-    state: State,
+    demo_events: list[DemoEvent],
+    cursor: int,
     model: str,
     system_prompt_suffix: str,
     api_key: str,
-    only_n_most_recent_images: int | None = None,
+    only_n_most_recent_images: Optional[int] = None,
     max_tokens: int = 4096,
-) -> bool:
+    worker_queue: WorkerQueue,
+):
     """
     Agentic sampling loop for the assistant/tool interaction of computer use.
     """
@@ -150,72 +129,59 @@ async def iterate_sampling_loop(
         EditTool(),
     )
 
-    unprocessed_messages = state.demo_events[state.anthropic_api_cursor:]
+    pending_events = demo_events[cursor:]
 
-    print(
-        f"There have been {len(state.demo_events)} messages, the cursor is at {state.anthropic_api_cursor}. There are {len(unprocessed_messages)} unprocessed messages."
-    )
-    for message in unprocessed_messages:
-        print(f"Processing message: {message['type']}")
-        if message['type'] == 'user_input':
-            print(f"Making a request to anthropic")
-            phone_anthropic(
-                state=state,
-                tool_collection=tool_collection,
-                model=model,
-                system_prompt_suffix=system_prompt_suffix,
-                api_key=api_key,
-                only_n_most_recent_images=only_n_most_recent_images,
-                max_tokens=max_tokens,
-            )
-            state.anthropic_api_cursor += 1
-            print(
-                f"The call to anthropic has completed. There are now {len(state.demo_events)} messages and the cursor is at {state.anthropic_api_cursor}. Yielding control..."
-            )
-            return False
-        if message['type'] == 'tool_use':
-            print(f"Running tools...")
-            result = await tool_collection.run(name=message['name'],
-                                               tool_input=message['input'])
-            state.add_tool_result(result, message['id'])
-            state.anthropic_api_cursor += 1
-            print(
-                f"Tools have run. There are now {len(state.demo_events)} messages and the cursor is at {state.anthropic_api_cursor}. Yielding control..."
-            )
-            return False
-        if message['type'] == 'tool_result':
-            print(f"Making a request to anthropic")
-            try:
-                phone_anthropic(
-                    state=state,
-                    tool_collection=tool_collection,
-                    model=model,
-                    system_prompt_suffix=system_prompt_suffix,
-                    api_key=api_key,
-                    only_n_most_recent_images=only_n_most_recent_images,
-                    max_tokens=max_tokens,
-                )
-                state.anthropic_api_cursor += 1
-            except Exception as e:
-                state.add_error(e)
-            print(
-                f"The call to anthropic has completed. There are now {len(state.demo_events)} messages and the cursor is at {state.anthropic_api_cursor}. Yielding control..."
-            )
-            return False
-        if message['type'] == 'assistant_output':
-            state.anthropic_api_cursor += 1
-            print(
-                f"Advanced the cursor. There are now {len(state.demo_events)} messages and the cursor is at {state.anthropic_api_cursor}. Yielding control..."
-            )
-            return False
-        if message['type'] == 'error':
-            state.add_error(message['error'])
-            print(
-                f"An error has occurred. There are now {len(state.demo_events)} messages and the cursor is at {state.anthropic_api_cursor}. Refusing to advance the cursor."
-            )
-            return False
+    for event in pending_events:
+        try:
+          if event['type'] == 'user_input':
+              worker_queue.put({
+                  "type": "anthropic_response",
+                  "response": await phone_anthropic(
+                  demo_events=demo_events,
+                  tool_collection=tool_collection,
+                  model=model,
+                  system_prompt_suffix=system_prompt_suffix,
+                  api_key=api_key,
+                  only_n_most_recent_images=only_n_most_recent_images,
+                  max_tokens=max_tokens,
+                  )
+              })
+              continue
+          if event['type'] == 'tool_use':
+              tool_result = await tool_collection.run(name=event['name'],
+                                                 tool_input=event['input'])
+              worker_queue.put({
+                  'type': 'tool_result',
+                  'tool_result': tool_result,
+                  'tool_use_id': event['id'],
+              })
+              continue
+          if event['type'] == 'tool_result':
+              response = await phone_anthropic(
+                  demo_events=demo_events,
+                  tool_collection=tool_collection,
+                  model=model,
+                  system_prompt_suffix=system_prompt_suffix,
+                  api_key=api_key,
+                  only_n_most_recent_images=only_n_most_recent_images,
+                  max_tokens=max_tokens,
+              )
+              result: WorkerEventAnthropicResponse = {
+                  'type': 'anthropic_response',
+                  'response': response,
+              }
+              worker_queue.put(result)
+              continue
+          if event['type'] == 'assistant_output':
+              continue
+          if event['type'] == 'error':
+              continue
+          assert_never(event, "Unexpected message type")
+        except Exception as e:
+            worker_queue.put({'type': 'error', 'error': str(e) + '\nfor event\n' + str(event)})
+            continue
 
-        assert_never(message, "Should not get here")
-
-    print(f"There are no unprocessed messages. Waiting for user input...")
-    return True
+    worker_queue.put({
+        "type": "finished",
+        "cursor": len(demo_events),
+    })
