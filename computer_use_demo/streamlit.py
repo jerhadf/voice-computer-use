@@ -123,13 +123,7 @@ async def main():
             return
 
     result = state.worker_queue.get()
-    print(f"Processing result: {result}")
-    length_before = len(state.demo_events)
     process_computer_use_event(state, result)
-    length_after = len(state.demo_events)
-    print(f"Processed result. Added {length_after - length_before} messages:")
-    print('  \n'.join([str(x) for x in state.demo_events[-(length_after - length_before):]]))
-    print('')
     print(f"The cursor is at {state.worker_cursor} the history length is {len(state.demo_events)}, and the worker is {'running' if state.worker_running else 'not running'}")
     st.rerun()
 
