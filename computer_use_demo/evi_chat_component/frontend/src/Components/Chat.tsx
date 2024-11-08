@@ -97,10 +97,11 @@ const useInteractivity = ({
 const InteractiveChat = (props: ComponentProps) => {
   const cursor = useInteractivity(props.args)
   let commandHistory = null;
-  if (props.args.commands.length > 1) {
-    const before = props.args.commands.slice(0, cursor - 1)
-    const at = props.args.commands[cursor - 1]
-    const after = props.args.commands.slice(cursor - 1, props.args.commands.length)
+  const commands = props.args.commands as Command[]
+  if (commands.length > 1) {
+    const before = commands.slice(0, cursor - 1)
+    const at = commands[cursor - 1]
+    const after = commands.slice(cursor - 1, commands.length)
     const history = `${before.map(c => c.type).join(', ')} ${JSON.stringify(at)} ${after.map(c => c.type).join(', ')}`
     commandHistory = (
       <pre>{history}</pre>
