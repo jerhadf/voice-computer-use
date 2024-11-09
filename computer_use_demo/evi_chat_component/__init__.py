@@ -9,8 +9,9 @@ _component_func = components.declare_component(
     # Pass `url` here to tell Streamlit that the component will be served
     # by the local dev server that you run via `npm run start`.
     # (This is useful while your component is in development.)
-    #url="http://localhost:3001",
-    path="./computer_use_demo/evi_chat_component/frontend/build")
+    url="http://localhost:3001",
+    #path="./computer_use_demo/evi_chat_component/frontend/build"
+)
 
 
 class MessageEvent(TypedDict):
@@ -37,6 +38,8 @@ class ChatCommandToggle(TypedDict):
     type: Literal[
         'mute',
         'unmute',
+        'connect', 
+        'disconnect',
         'pauseAssistant',
         'resumeAssistant',
         'muteAudio',
@@ -67,17 +70,22 @@ ChatCommand = Union[
     ChatCommandSendToolMessage
 ]
 
+class ComponentValue(TypedDict):
+    events: List[ChatEvent]
+    is_muted: bool
+    is_connected: bool
 
 def empathic_voice_chat(
     *,
     hume_api_key: str,
     commands: List[ChatCommand],
     key=None,
-) -> List[ChatEvent]:
+) -> ComponentValue:
     component_value = _component_func(
         hume_api_key=hume_api_key,
         commands=commands,
         key=key,
-        default=None)
+        default={"events": [], "is_muted": False, "is_connected": False}
+    )
 
     return component_value

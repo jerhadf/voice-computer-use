@@ -263,6 +263,22 @@ class State:
         command: ChatCommand = {"type": "pauseAssistant"}
         self._session_state.evi_commands.append(command)
 
+    def mute_evi_microphone(self):
+        command: ChatCommand = {"type": "mute"}
+        self._session_state.evi_commands.append(command)
+
+    def unmute_evi_microphone(self):
+        command: ChatCommand = {"type": "unmute"}
+        self._session_state.evi_commands.append(command)
+
+    def disconnect_evi(self):
+        command: ChatCommand = {"type": "disconnect"}
+        self._session_state.evi_commands.append(command)
+
+    def connect_evi(self):
+        command: ChatCommand = {"type": "connect"}
+        self._session_state.evi_commands.append(command)
+
     @property
     def evi_cursor(self) -> int:
         return self._session_state.evi_cursor

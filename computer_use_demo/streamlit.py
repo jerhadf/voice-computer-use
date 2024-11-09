@@ -6,7 +6,7 @@ import asyncio
 from queue import Queue
 
 from computer_use_demo.state import DemoEvent, State, WorkerQueue
-from .evi_chat_component import ChatEvent as EviEvent, empathic_voice_chat
+from .evi_chat_component import ChatCommand, ChatEvent as EviEvent, empathic_voice_chat
 
 from computer_use_demo.loop import (
     PROVIDER_TO_DEFAULT_MODEL_NAME,
@@ -22,19 +22,6 @@ import base64
 # Define constants and configurations
 CONFIG_DIR = PosixPath("~/.anthropic").expanduser()
 API_KEY_FILE = CONFIG_DIR / "api_key"
-STREAMLIT_STYLE = """
-<style>
-    /* Hide chat input while agent loop is running */
-    .stApp[data-teststate=running] .stChatInput textarea,
-    .stApp[data-test-script-state=running] .stChatInput textarea {
-        display: none;
-    }
-     /* Hide the streamlit deploy button */
-    .stDeployButton {
-        visibility: hidden;
-    }
-</style>
-"""
 
 class Sender(StrEnum):
     USER = "user"
@@ -72,8 +59,7 @@ async def main():
     print("Rerunning...")
     state = State(st.session_state)
 
-    st.markdown(STREAMLIT_STYLE, unsafe_allow_html=True)
-    st.title("Computer Control Interface")
+    st.title("Computer voice control")
 
     if auth_error := validate_auth(PROVIDER, ANTHROPIC_API_KEY):
         st.warning(f"Please resolve the following auth issue:\n\n{auth_error}")
@@ -85,10 +71,10 @@ async def main():
     if user_input_message:
         state.add_user_input(user_input_message)
 
-    new_messages = _hume_evi_chat(state=state)
+    new_evi_events = _hume_evi_chat(state=state)
 
-    for new_message in new_messages:
-        state.add_user_input(new_message)
+    for new_evi_event in new_evi_events:
+        state.add_user_input(new_evi_event)
 
     st.code("\n".join([m.__repr__() for m in state.demo_events]))
 
@@ -177,10 +163,35 @@ def _hume_evi_chat(*, state: State) -> List[str]:
         return []
 
     new_events = []
-    events = empathic_voice_chat(
+    chat_result = empathic_voice_chat(
         key="evi_chat",
         commands=state.evi_commands,
-        hume_api_key=hume_api_key) or []
+        hume_api_key=hume_api_key)
+
+    events = chat_result['events']
+    is_muted = chat_result['is_muted']
+    is_connected = chat_result['is_connected']
+
+    if not is_connected:
+        if st.button("Connect"):
+            state.connect_evi()
+            st.rerun()
+
+    elif st.button("Disconnect"):
+        state.disconnect_evi()
+        st.rerun()
+
+    if not is_muted:
+        if st.button("Mute", disabled=not is_connected):
+            state.mute_evi_microphone()
+            st.rerun()
+    else:
+        if st.button("Unmute", disabled=not is_connected):
+            state.unmute_evi_microphone()
+            st.rerun()
+
+    if st.button('Rerun'):
+        st.rerun()
 
     st.code(events)
 
@@ -190,15 +201,22 @@ def _hume_evi_chat(*, state: State) -> List[str]:
 
 
     ret = []
+    should_rerun = False
     for event in new_events:
         if event['type'] == 'message' and event['message']['type'] == 'chat_metadata':
+            print("Pausing EVI")
             state.pause_evi()
-            continue
+            should_rerun = True
+
+        if event['type'] == 'message' and event['message']['type'] == 'error':
+            state.add_error(event['message']['error'])
 
         if event['type'] == 'message':
             message = event['message']
             if message['type'] == 'user_message':
                 ret.append(message['message']['content'])
+    if should_rerun:
+        st.rerun()
 
     return ret
 
