@@ -38,21 +38,24 @@ HIDE_IMAGES = False
 
 # Define the background thread class
 class AsyncioThread(threading.Thread):
-    def __init__(self, queue):
+    def __init__(self):
         super().__init__(daemon=True)
         self.loop = asyncio.new_event_loop()
-        self.queue = queue
 
     def run(self):
         asyncio.set_event_loop(self.loop)
         self.loop.run_forever()
 
+@st.cache_resource()
+def worker_thread():
+    thread = AsyncioThread()
+    thread.start()
+    return thread
+
+
 # Start the asyncio event loop in a background thread only once
 if 'worker_queue' not in st.session_state:
     st.session_state.worker_queue = WorkerQueue(Queue())
-if 'asyncio_thread' not in st.session_state:
-    st.session_state.asyncio_thread = AsyncioThread(st.session_state.worker_queue)
-    st.session_state.asyncio_thread.start()
 
 async def main():
     """Render loop for Streamlit."""
@@ -96,7 +99,7 @@ async def main():
                 max_tokens=4096,
                 worker_queue=state.worker_queue
             ),
-            st.session_state.asyncio_thread.loop
+            worker_thread().loop
         )
 
 
