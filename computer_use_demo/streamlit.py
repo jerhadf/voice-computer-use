@@ -223,6 +223,7 @@ def _render_latest_command(state: State):
 
 def _render_status_indicator(state: State):
     if len(state.demo_events) == 0 or not state.worker_running:
+        st.status(label="Waiting for user input...")
         return
     current_event = state.demo_events[state.worker_cursor]
     if current_event['type'] == 'tool_result' or current_event['type'] == 'user_input':
@@ -231,9 +232,9 @@ def _render_status_indicator(state: State):
         st.status(label=f"Running tool {current_event['name']}...")
         st.code(current_event['input'])
     elif current_event['type'] == 'assistant_output':
-        return
+        st.code(current_event)
     elif current_event['type'] == 'error':
-        st.error(current_event['error'])
+        st.code(current_event)
         return
     else: 
         assert_never(current_event)
