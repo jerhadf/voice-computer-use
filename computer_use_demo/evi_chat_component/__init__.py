@@ -36,7 +36,7 @@ ChatEvent = Union[MessageEvent, ClosedEvent, OpenedEvent, ErrorEvent]
 
 class ChatCommandToggle(TypedDict):
     type: Literal['mute', 'unmute', 'connect', 'disconnect', 'pauseAssistant',
-                  'resumeAssistant', 'muteAudio', 'unmuteAudio']
+                  'resumeAssistant', 'muteAudio', 'unmuteAudio', 'clearAudioQueue']
 
 
 class ChatCommandSendUserInput(TypedDict):

@@ -30,6 +30,7 @@ type Command =
         | "unmuteAudio"
         | "connect"
         | "disconnect"
+        | "clearAudioQueue"
     }
   | {
       type: "sendUserInput"
@@ -144,6 +145,10 @@ const InteractiveChat = (props: InteractiveChatProps) => {
         return
       case "sendToolMessage":
         sendToolMessage(command.message)
+        return
+      case "clearAudioQueue":
+        console.log("Clearing audio queue")
+        sendUserInput("")
         return
     }
   }

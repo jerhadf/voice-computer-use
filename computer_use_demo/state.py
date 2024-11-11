@@ -274,6 +274,10 @@ class State:
         command: ChatCommand = {"type": "sendAssistantInput", "message": text}
         self._session_state.evi_commands.append(command)
 
+    def clear_audio_queue(self):
+        command: ChatCommand = {"type": "clearAudioQueue"}
+        self._session_state.evi_commands.append(command)
+
     def add_error(self, error: Any):
         message: DemoEvent = {"type": "error", "error": error}
         self._session_state.demo_events.append(message)
