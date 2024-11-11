@@ -218,6 +218,7 @@ def _render_latest_command(state: State):
         if event['type'] == 'tool_use':
             st.markdown(f"Last command: {event['name']}")
             st.code(event['input'])
+            return
 
 
 def _render_status_indicator(state: State):
