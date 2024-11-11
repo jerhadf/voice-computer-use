@@ -71,15 +71,19 @@ async def main():
     user_input_message = st.chat_input(
         "Type or speak a message to control the computer...")
 
+    debug = st.toggle("Debug")
+
+    if debug:
+        st.code("\n".join([m.__repr__() for m in state.demo_events]))
+
     if user_input_message:
         state.add_user_input(user_input_message)
 
-    new_evi_events = _hume_evi_chat(state=state)
+    new_evi_events = _hume_evi_chat(state=state, debug=debug)
 
     for new_evi_event in new_evi_events:
         state.add_user_input(new_evi_event)
 
-    st.code("\n".join([m.__repr__() for m in state.demo_events]))
 
     _render_status_indicator(state)
     _render_latest_screenshot(state.demo_events)
@@ -125,7 +129,7 @@ def validate_auth(provider: APIProvider, api_key: str | None):
         if not api_key:
             return "Enter your Anthropic API key in the sidebar to continue."
 
-def _hume_evi_chat(*, state: State) -> List[str]:
+def _hume_evi_chat(*, state: State, debug: bool) -> List[str]:
     """
     Renders the EVI chat, handles commands to EVI that are passed in through
     the session state, and acts on messages received from EVI. Returns a string
@@ -170,7 +174,8 @@ def _hume_evi_chat(*, state: State) -> List[str]:
     if st.button('Rerun'):
         st.rerun()
 
-    st.code(events)
+    if debug:
+        st.code(events)
 
     if state.evi_cursor < len(events):
         new_events = events[state.evi_cursor:]
