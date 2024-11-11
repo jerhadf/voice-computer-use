@@ -86,6 +86,7 @@ async def main():
 
 
     _render_status_indicator(state)
+    _render_latest_command(state.demo_events)+
     _render_latest_screenshot(state.demo_events)
 
     if not state.worker_running and state.worker_cursor < len(state.demo_events):
@@ -211,6 +212,13 @@ def _render_latest_screenshot(events: List[DemoEvent]):
             if result.base64_image:
                 st.image(base64.b64decode(result.base64_image))
                 return
+
+def _render_latest_command(state: State):
+    for event in reversed(state.demo_events[:state.worker_cursor]):
+        if event['type'] == 'tool_use':
+            st.markdown(f"Last command: {event['name']}")
+            st.code(event['input'])
+
 
 def _render_status_indicator(state: State):
     if len(state.demo_events) == 0 or not state.worker_running:
