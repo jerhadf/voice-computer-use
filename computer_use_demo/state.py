@@ -119,6 +119,7 @@ def group_tool_messages(events: List[DemoEvent]) -> List[DemoEvent]:
                 })
         else:
             ret.append(event)
+    return ret
 
 
 def to_beta_message_param(event: DemoEvent) -> Optional[BetaMessageParam]:
