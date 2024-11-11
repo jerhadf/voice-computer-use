@@ -15,13 +15,16 @@ from anthropic.types.beta import (
 
 EventStatus = Literal['queued', 'pending', 'complete', 'canceled']
 
+
 class DemoEventUserInput(TypedDict):
     type: Literal['user_input']
     text: str
 
+
 class DemoEventAssistantOutput(TypedDict):
     type: Literal['assistant_output']
     text: str
+
 
 class DemoEventToolUse(TypedDict):
     type: Literal['tool_use']
@@ -29,14 +32,17 @@ class DemoEventToolUse(TypedDict):
     input: dict[str, Any]
     name: str
 
+
 class DemoEventToolResult(TypedDict):
     type: Literal['tool_result']
     result: ToolResult
     tool_use_id: str
 
+
 class DemoEventError(TypedDict):
     type: Literal['error']
     error: Any
+
 
 """
 Demo events are a canonical representation of the events that happened throughout the chat session.
@@ -155,22 +161,27 @@ def to_beta_message_param(event: DemoEvent) -> Optional[BetaMessageParam]:
         return None
     assert_never(event)
 
+
 class WorkerEventToolResult(TypedDict):
     type: Literal['tool_result']
     tool_result: ToolResult
     tool_use_id: str
 
+
 class WorkerEventAnthropicResponse(TypedDict):
     type: Literal['anthropic_response']
     response: BetaMessage
+
 
 class WorkerEventError(TypedDict):
     type: Literal['error']
     error: str
 
+
 class WorkerEventFinished(TypedDict):
     type: Literal['finished']
     cursor: int
+
 
 """
 Long-running tasks (tool uses and calls to the anthropic API) need to be executed in a separate thread that is
@@ -182,6 +193,7 @@ WorkerEvent describes the type of the messages that the worker thread puts onto 
 """
 WorkerEvent = WorkerEventToolResult | WorkerEventAnthropicResponse | WorkerEventError | WorkerEventFinished
 
+
 class WorkerQueue():
     """
     Type safe wrapper around Queue. Otherwise .put and .get would accept Any, but it's nice to have the type
@@ -189,12 +201,16 @@ class WorkerQueue():
     """
 
     _queue: Queue
+
     def __init__(self, queue):
         self._queue = queue
+
     def put(self, event: WorkerEvent):
         self._queue.put(event)
+
     def empty(self) -> bool:
         return self._queue.empty()
+
     def get(self) -> WorkerEvent:
         return self._queue.get()
 
@@ -234,6 +250,8 @@ class State:
             session_state.worker_cursor = 0
         if 'worker_running' not in session_state:
             session_state.worker_running = False
+        if 'debug' not in session_state:
+            session_state.debug = False
 
     @property
     def demo_events(self) -> List[DemoEvent]:
@@ -315,7 +333,6 @@ class State:
     @property
     def evi_commands(self) -> List[ChatCommand]:
         return self._session_state.evi_commands
-
 
     @property
     def worker_cursor(self) -> int:

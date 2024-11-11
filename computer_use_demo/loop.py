@@ -4,13 +4,8 @@ from enum import StrEnum
 from typing import Any, Optional, cast
 
 from anthropic import Anthropic
-from anthropic.types.beta import (
-    BetaMessage,
-    BetaToolParam,
-    BetaMessageParam,
-    BetaToolResultBlockParam
-
-)
+from anthropic.types.beta import (BetaMessage, BetaToolParam, BetaMessageParam,
+                                  BetaToolResultBlockParam)
 from pydantic.utils import assert_never
 
 from computer_use_demo.state import DemoEvent, State, WorkerEvent, WorkerEventAnthropicResponse, WorkerQueue, group_tool_messages, to_beta_message_param
@@ -19,10 +14,12 @@ from .tools import BashTool, ComputerTool, EditTool, ToolCollection
 
 BETA_FLAG = "computer-use-2024-10-22"
 
+
 class APIProvider(StrEnum):
     ANTHROPIC = "anthropic"
     BEDROCK = "bedrock"
     VERTEX = "vertex"
+
 
 PROVIDER_TO_DEFAULT_MODEL_NAME: dict[APIProvider, str] = {
     APIProvider.ANTHROPIC: "claude-3-5-sonnet-20241022",
@@ -65,14 +62,15 @@ async def phone_anthropic(
         f"{SYSTEM_PROMPT}{' ' + system_prompt_suffix if system_prompt_suffix else ''}"
     )
 
-    messages = messages=[
+    messages = messages = [
         x for x in [
             to_beta_message_param(message)
             for message in group_tool_messages(demo_events)
         ] if x
     ]
 
-    _maybe_filter_to_n_most_recent_images(messages, images_to_keep=only_n_most_recent_images)
+    _maybe_filter_to_n_most_recent_images(
+        messages, images_to_keep=only_n_most_recent_images)
     tools = cast(list[BetaToolParam], tool_collection.to_params())
 
     raw_response = Anthropic(
@@ -86,6 +84,7 @@ async def phone_anthropic(
         )
     response = raw_response.parse()
     return response
+
 
 def _maybe_filter_to_n_most_recent_images(
     messages: list[BetaMessageParam],
@@ -104,21 +103,17 @@ def _maybe_filter_to_n_most_recent_images(
     tool_result_blocks = cast(
         list[BetaToolResultBlockParam],
         [
-            item
-            for message in messages
-            for item in (
-                message["content"] if isinstance(message["content"], list) else []
-            )
+            item for message in messages
+            for item in (message["content"] if isinstance(
+                message["content"], list) else [])
             if isinstance(item, dict) and item.get("type") == "tool_result"
         ],
     )
 
     total_images = sum(
-        1
-        for tool_result in tool_result_blocks
+        1 for tool_result in tool_result_blocks
         for content in tool_result.get("content", [])
-        if isinstance(content, dict) and content.get("type") == "image"
-    )
+        if isinstance(content, dict) and content.get("type") == "image")
 
     images_to_remove = total_images - images_to_keep
     # for better cache behavior, we want to remove in chunks
@@ -128,12 +123,14 @@ def _maybe_filter_to_n_most_recent_images(
         if isinstance(tool_result.get("content"), list):
             new_content = []
             for content in tool_result.get("content", []):
-                if isinstance(content, dict) and content.get("type") == "image":
+                if isinstance(content,
+                              dict) and content.get("type") == "image":
                     if images_to_remove > 0:
                         images_to_remove -= 1
                         continue
                 new_content.append(content)
             tool_result["content"] = new_content
+
 
 def process_computer_use_event(state: State, result: WorkerEvent):
     """Updates the state based on the result from the worker thread."""
@@ -147,10 +144,10 @@ def process_computer_use_event(state: State, result: WorkerEvent):
                     name=content_block.name,
                 )
             elif content_block.type == "text":
-                state.add_assistant_output(content_block.text)
                 state.trigger_evi_speech(content_block.text)
+                state.add_assistant_output(content_block.text)
     elif result['type'] == 'tool_result':
-      state.add_tool_result(result['tool_result'], result['tool_use_id'])
+        state.add_tool_result(result['tool_result'], result['tool_use_id'])
     elif result['type'] == 'finished':
         print("Worker finished at cursor", result['cursor'])
         state.worker_running = False
@@ -159,6 +156,7 @@ def process_computer_use_event(state: State, result: WorkerEvent):
         state.add_error(result['error'])
     else:
         assert_never(result, "Unexpected message type")
+
 
 async def run_worker(
     *,
@@ -185,52 +183,57 @@ async def run_worker(
 
     for event in pending_events:
         try:
-          if event['type'] == 'user_input':
-              worker_queue.put({
-                  "type": "anthropic_response",
-                  "response": await phone_anthropic(
-                  demo_events=demo_events,
-                  tool_collection=tool_collection,
-                  model=model,
-                  system_prompt_suffix=system_prompt_suffix,
-                  api_key=api_key,
-                  only_n_most_recent_images=only_n_most_recent_images,
-                  max_tokens=max_tokens,
-                  )
-              })
-              continue
-          if event['type'] == 'tool_use':
-              tool_result = await tool_collection.run(name=event['name'],
-                                                 tool_input=event['input'])
-              worker_queue.put({
-                  'type': 'tool_result',
-                  'tool_result': tool_result,
-                  'tool_use_id': event['id'],
-              })
-              continue
-          if event['type'] == 'tool_result':
-              response = await phone_anthropic(
-                  demo_events=demo_events,
-                  tool_collection=tool_collection,
-                  model=model,
-                  system_prompt_suffix=system_prompt_suffix,
-                  api_key=api_key,
-                  only_n_most_recent_images=only_n_most_recent_images,
-                  max_tokens=max_tokens,
-              )
-              result: WorkerEventAnthropicResponse = {
-                  'type': 'anthropic_response',
-                  'response': response,
-              }
-              worker_queue.put(result)
-              continue
-          if event['type'] == 'assistant_output':
-              continue
-          if event['type'] == 'error':
-              continue
-          assert_never(event, "Unexpected message type")
+            if event['type'] == 'user_input':
+                worker_queue.put({
+                    "type":
+                    "anthropic_response",
+                    "response":
+                    await phone_anthropic(
+                        demo_events=demo_events,
+                        tool_collection=tool_collection,
+                        model=model,
+                        system_prompt_suffix=system_prompt_suffix,
+                        api_key=api_key,
+                        only_n_most_recent_images=only_n_most_recent_images,
+                        max_tokens=max_tokens,
+                    )
+                })
+                continue
+            if event['type'] == 'tool_use':
+                tool_result = await tool_collection.run(
+                    name=event['name'], tool_input=event['input'])
+                worker_queue.put({
+                    'type': 'tool_result',
+                    'tool_result': tool_result,
+                    'tool_use_id': event['id'],
+                })
+                continue
+            if event['type'] == 'tool_result':
+                response = await phone_anthropic(
+                    demo_events=demo_events,
+                    tool_collection=tool_collection,
+                    model=model,
+                    system_prompt_suffix=system_prompt_suffix,
+                    api_key=api_key,
+                    only_n_most_recent_images=only_n_most_recent_images,
+                    max_tokens=max_tokens,
+                )
+                result: WorkerEventAnthropicResponse = {
+                    'type': 'anthropic_response',
+                    'response': response,
+                }
+                worker_queue.put(result)
+                continue
+            if event['type'] == 'assistant_output':
+                continue
+            if event['type'] == 'error':
+                continue
+            assert_never(event, "Unexpected message type")
         except Exception as e:
-            worker_queue.put({'type': 'error', 'error': str(e) + '\nfor event\n' + str(event)})
+            worker_queue.put({
+                'type': 'error',
+                'error': str(e) + '\nfor event\n' + str(event)
+            })
             continue
 
     worker_queue.put({

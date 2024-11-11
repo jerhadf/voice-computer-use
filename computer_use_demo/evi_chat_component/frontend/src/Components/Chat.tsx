@@ -8,8 +8,8 @@ import React, { ReactNode, useEffect } from "react"
 import { VoiceProvider, useVoice, VoiceReadyState } from "@humeai/voice-react"
 
 type ComponentValue = {
-  events: ChatEvent[],
-  is_muted: boolean,
+  events: ChatEvent[]
+  is_muted: boolean
   is_connected: boolean
 }
 
@@ -19,34 +19,44 @@ const setComponentValue = (value: ComponentValue) => {
 }
 
 type UseVoiceReturn = ReturnType<typeof useVoice>
-type Command = {
-  type: 'mute' | 'unmute' | 'pauseAssistant' | 'resumeAssistant' | 'muteAudio' | 'unmuteAudio' | 'connect' | 'disconnect'
-} | {
-  type: 'sendUserInput',
-  message: Parameters<UseVoiceReturn["sendUserInput"]>[0]
-} | {
-  type: 'sendAssistantInput',
-  message: Parameters<UseVoiceReturn["sendAssistantInput"]>[0]
-} | {
-  type: 'sendSessionSettings',
-  message: Parameters<UseVoiceReturn["sendSessionSettings"]>[0]
-} | {
-  type: 'sendToolMessage',
-  message: Parameters<UseVoiceReturn["sendToolMessage"]>[0]
-}
+type Command =
+  | {
+      type:
+        | "mute"
+        | "unmute"
+        | "pauseAssistant"
+        | "resumeAssistant"
+        | "muteAudio"
+        | "unmuteAudio"
+        | "connect"
+        | "disconnect"
+    }
+  | {
+      type: "sendUserInput"
+      message: Parameters<UseVoiceReturn["sendUserInput"]>[0]
+    }
+  | {
+      type: "sendAssistantInput"
+      message: Parameters<UseVoiceReturn["sendAssistantInput"]>[0]
+    }
+  | {
+      type: "sendSessionSettings"
+      message: Parameters<UseVoiceReturn["sendSessionSettings"]>[0]
+    }
+  | {
+      type: "sendToolMessage"
+      message: Parameters<UseVoiceReturn["sendToolMessage"]>[0]
+    }
 
 type InteractiveChatProps = {
-  commands: Command[],
-  events: ChatEvent[],
+  commands: Command[]
+  events: ChatEvent[]
   listen_to: Array<Listenable>
+  debug: boolean
 }
 
 const InteractiveChat = (props: InteractiveChatProps) => {
-  const {
-    commands,
-    events,
-    listen_to
-  } = props
+  const { commands, events, listen_to, debug } = props
   const {
     connect,
     disconnect,
@@ -62,7 +72,7 @@ const InteractiveChat = (props: InteractiveChatProps) => {
     resumeAssistant,
 
     isMuted,
-    readyState
+    readyState,
   } = useVoice()
 
   const [eventCursor, setEventCursor] = React.useState(0)
@@ -71,58 +81,68 @@ const InteractiveChat = (props: InteractiveChatProps) => {
     if (newEvents.length === 0) {
       return
     }
-    if (newEvents.some(e => listenedTo(listen_to, e))) {
-      setComponentValue({ events: events, is_muted: isMuted, is_connected: readyState === VoiceReadyState.OPEN });
+    if (newEvents.some((e) => listenedTo(listen_to, e))) {
+      setComponentValue({
+        events: events,
+        is_muted: isMuted,
+        is_connected: readyState === VoiceReadyState.OPEN,
+      })
       setEventCursor(events.length)
     } else {
-      console.log(`None of the new events ${newEvents.map(e => e.type)} were being listened to.`)
+      console.log(
+        `None of the new events ${newEvents.map((e) => e.type)} were being listened to.`
+      )
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events])
 
   useEffect(() => {
-    console.log('Voice ready state changed to', readyState)
-    setComponentValue({ events: events, is_muted: isMuted, is_connected: readyState === VoiceReadyState.OPEN });
+    console.log("Voice ready state changed to", readyState)
+    setComponentValue({
+      events: events,
+      is_muted: isMuted,
+      is_connected: readyState === VoiceReadyState.OPEN,
+    })
   }, [isMuted, readyState])
 
   const dispatchCommand = (command: Command) => {
     console.log(`Dispatching command ${command.type} ...`)
     switch (command.type) {
-      case 'connect':
+      case "connect":
         connect()
         return
-      case 'disconnect':
+      case "disconnect":
         disconnect()
         return
-      case 'mute':
+      case "mute":
         mute()
         return
-      case 'unmute':
+      case "unmute":
         unmute()
         return
-      case 'pauseAssistant':
-        console.log('Paused assistant')
+      case "pauseAssistant":
+        console.log("Paused assistant")
         pauseAssistant()
         return
-      case 'resumeAssistant':
+      case "resumeAssistant":
         resumeAssistant()
         return
-      case 'muteAudio':
+      case "muteAudio":
         muteAudio()
         return
-      case 'unmuteAudio':
+      case "unmuteAudio":
         unmuteAudio()
         return
-      case 'sendUserInput':
+      case "sendUserInput":
         sendUserInput(command.message)
         return
-      case 'sendAssistantInput':
+      case "sendAssistantInput":
         sendAssistantInput(command.message)
         return
-      case 'sendSessionSettings':
+      case "sendSessionSettings":
         sendSessionSettings(command.message)
         return
-      case 'sendToolMessage':
+      case "sendToolMessage":
         sendToolMessage(command.message)
         return
     }
@@ -130,30 +150,52 @@ const InteractiveChat = (props: InteractiveChatProps) => {
 
   const [commandCursor, setCommandCursor] = React.useState(0)
   useEffect(() => {
-    console.log('commands updated', commands)
+    console.log("commands updated", commands)
     if (commandCursor > commands.length) {
-      console.error('Unexpected: cursor is greater than commands length')
+      console.error("Unexpected: cursor is greater than commands length")
     }
     const newCommands = commands.slice(commandCursor, commands.length)
     newCommands.forEach((command) => dispatchCommand(command))
     setCommandCursor(commands.length)
-    console.log(`commands updated. There were ${newCommands.length} new commands. The cursor is now at ${commands.length}`)
+    console.log(
+      `commands updated. There were ${newCommands.length} new commands. The cursor is now at ${commands.length}`
+    )
   }, [commands])
+  if (debug) {
+    return (
+      <pre>
+        {JSON.stringify(
+          { commandCursor, commands: commands.map((c, i) => [i, c]), events },
+          null,
+          2
+        )}
+      </pre>
+    )
+  }
   return <></>
-  //return (
-  //  <pre>{JSON.stringify({commandCursor, commands: commands.map((c, i) => [i, c]), events}, null, 2)}</pre>
-  //)
 }
-type Listenable = `message.${Parameters<NonNullable<VoiceProviderParam["onMessage"]>>[0]['type']}` | ChatEvent["type"]
+type Listenable =
+  | `message.${Parameters<NonNullable<VoiceProviderParam["onMessage"]>>[0]["type"]}`
+  | ChatEvent["type"]
 type StreamlitArgs = InteractiveChatProps & {
-  hume_api_key: string,
-  config_id: string,
+  hume_api_key: string
+  config_id: string
 }
-const defaultListenTo: Array<Listenable> = ["message.user_message", "message.chat_metadata", "opened", "closed", "error"]
-const listenedTo = (listen_to: Array<Listenable> = defaultListenTo, event: ChatEvent) => {
-  const slug = event.type === 'message' ? `message.${event.message.type}` : event.type
-  console.log('event type was', slug )
-  console.log('listen_to was', listen_to.join(', '))
+const defaultListenTo: Array<Listenable> = [
+  "message.user_message",
+  "message.chat_metadata",
+  "opened",
+  "closed",
+  "error",
+]
+const listenedTo = (
+  listen_to: Array<Listenable> = defaultListenTo,
+  event: ChatEvent
+) => {
+  const slug =
+    event.type === "message" ? `message.${event.message.type}` : event.type
+  console.log("event type was", slug)
+  console.log("listen_to was", listen_to.join(", "))
   if (event.type === "message") {
     return listen_to.includes(`message.${event.message.type}`)
   }
@@ -163,30 +205,30 @@ const listenedTo = (listen_to: Array<Listenable> = defaultListenTo, event: ChatE
 type VoiceProviderParam = Parameters<typeof VoiceProvider>[0]
 type ChatEvent =
   | {
-    type: "message"
-    message: Parameters<NonNullable<VoiceProviderParam["onMessage"]>>[0]
-  }
+      type: "message"
+      message: Parameters<NonNullable<VoiceProviderParam["onMessage"]>>[0]
+    }
   | {
-    type: "closed"
-  }
+      type: "closed"
+    }
   | {
-    type: "opened"
-  }
+      type: "opened"
+    }
   | {
-    type: "error"
-    error: Parameters<NonNullable<VoiceProviderParam["onError"]>>[0]
-  }
+      type: "error"
+      error: Parameters<NonNullable<VoiceProviderParam["onError"]>>[0]
+    }
 
 const Chat = (props: ComponentProps) => {
   const args = props.args as StreamlitArgs
-  const { hume_api_key, listen_to, commands, config_id } = args 
+  const { hume_api_key, listen_to, commands, config_id, debug } = args
   const [events, setEvents] = React.useState<ChatEvent[]>([])
   const addEvent = (event: ChatEvent) => {
-    console.log('Event dispatched: ', event.type)
+    console.log("Event dispatched: ", event.type)
     setEvents([...events, event])
   }
   useEffect(() => {
-    console.log('Rerendering component...')
+    console.log("Rerendering component...")
   }, [])
   return (
     <VoiceProvider
@@ -205,7 +247,12 @@ const Chat = (props: ComponentProps) => {
         addEvent({ type: "error", error })
       }}
     >
-      <InteractiveChat commands={commands} events={events} listen_to={listen_to}/>
+      <InteractiveChat
+        commands={commands}
+        events={events}
+        listen_to={listen_to}
+        debug={debug}
+      />
     </VoiceProvider>
   )
 }
