@@ -132,7 +132,6 @@ def _maybe_filter_to_n_most_recent_images(
 
 def process_computer_use_event(state: State, result: WorkerEvent):
     """Updates the state based on the result from the background thread."""
-    print("Inside here")
     if result['type'] == 'anthropic_response':
         response = result['response']
         for content_block in response.content:

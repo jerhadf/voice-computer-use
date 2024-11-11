@@ -1,12 +1,12 @@
 from enum import StrEnum
-from typing import List, Optional
+from typing import List, Optional, assert_never
 import streamlit as st
 import threading
 import asyncio
 from queue import Queue
 
 from computer_use_demo.state import DemoEvent, State, WorkerQueue
-from .evi_chat_component import ChatCommand, ChatEvent as EviEvent, empathic_voice_chat
+from .evi_chat_component import ChatEvent as EviEvent, empathic_voice_chat
 
 from computer_use_demo.loop import (
     PROVIDER_TO_DEFAULT_MODEL_NAME,
@@ -81,8 +81,8 @@ async def main():
 
     st.code("\n".join([m.__repr__() for m in state.demo_events]))
 
-    for chat_event in state.demo_events:
-        _render_chat_event(chat_event)
+    _render_status_indicator(state)
+    _render_latest_screenshot(state.demo_events)
 
     if not state.worker_running and state.worker_cursor < len(state.demo_events):
         print("Starting worker...")
@@ -124,32 +124,6 @@ def validate_auth(provider: APIProvider, api_key: str | None):
     if provider == APIProvider.ANTHROPIC:
         if not api_key:
             return "Enter your Anthropic API key in the sidebar to continue."
-
-
-def load_from_storage(filename: str) -> str | None:
-    """Load data from a file in the storage directory."""
-    try:
-        file_path = CONFIG_DIR / filename
-        if file_path.exists():
-            data = file_path.read_text().strip()
-            if data:
-                return data
-    except Exception as e:
-        st.write(f"Debug: Error loading {filename}: {e}")
-    return None
-
-
-def save_to_storage(filename: str, data: str) -> None:
-    """Save data to a file in the storage directory."""
-    try:
-        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        file_path = CONFIG_DIR / filename
-        file_path.write_text(data)
-        # Ensure only user can read/write the file
-        file_path.chmod(0o600)
-    except Exception as e:
-        st.write(f"Debug: Error saving {filename}: {e}")
-
 
 def _hume_evi_chat(*, state: State) -> List[str]:
     """
@@ -224,46 +198,30 @@ def _hume_evi_chat(*, state: State) -> List[str]:
     return ret
 
 
-def _chat_event_sender(chat_event: DemoEvent) -> Sender:
-    if chat_event['type'] == 'user_input':
-        return Sender.USER
-    elif chat_event['type'] == 'assistant_output':
-        return Sender.BOT
-    elif chat_event['type'] == 'tool_use':
-        return Sender.BOT
-    elif chat_event['type'] == 'tool_result':
-        return Sender.TOOL
-    elif chat_event['type'] == 'error':
-        raise ValueError("Unexpected, errors shouldn't have senders")
-    else:
-        assert_never(chat_event)
 
-def _render_chat_event(chat_event: DemoEvent):
-    if chat_event['type'] == 'error':
-        st.error(chat_event['error'])
-        return
-    sender = _chat_event_sender(chat_event)
-    with st.chat_message(sender):
-        if chat_event['type'] == 'user_input':
-            st.markdown(chat_event['text'])
-            return
-        if chat_event['type'] == 'assistant_output':
-            st.markdown(chat_event['text'])
-            return
-        if chat_event['type'] == 'tool_use':
-            st.code(
-                f"Tool Use: {chat_event['name']}\nInput: {chat_event['input']}"
-            )
-            return
-        if chat_event['type'] == 'tool_result':
-            result: ToolResult = chat_event['result']
-            if result.output:
-                st.markdown(result.output)
+def _render_latest_screenshot(events: List[DemoEvent]):
+    for event in reversed(events):
+        if event['type'] == 'tool_result':
+            result: ToolResult = event['result']
             if result.base64_image:
                 st.image(base64.b64decode(result.base64_image))
-            if result.error:
-                st.error(result.error)
+                return
 
+def _render_status_indicator(state: State):
+    if len(state.demo_events) == 0 or not state.worker_running:
+        return
+    current_event = state.demo_events[state.worker_cursor]
+    if current_event['type'] == 'tool_result' or current_event['type'] == 'user_input':
+        st.status(label="Waiting for response from Anthropic...")
+    elif current_event['type'] == 'tool_use':
+        st.status(label=f"Running command {current_event['name']}...")
+    elif current_event['type'] == 'assistant_output':
+        return
+    elif current_event['type'] == 'error':
+        st.error(current_event['error'])
+        return
+    else: 
+        assert_never(current_event)
 
 if __name__ == "__main__":
     asyncio.run(main())
