@@ -85,9 +85,9 @@ async def main():
         state.add_user_input(new_evi_event)
 
 
-    _render_status_indicator(state)
-    _render_latest_command(state.demo_events)+
+    _render_latest_command(state)
     _render_latest_screenshot(state.demo_events)
+    _render_status_indicator(state)
 
     if not state.worker_running and state.worker_cursor < len(state.demo_events):
         print("Starting worker...")
