@@ -8,3 +8,10 @@ gatherUsageStats = false
 
 [client]
 showErrorDetails = true
+
+[theme]
+primaryColor = "#ffad60"  # soft orange
+backgroundColor = "#fff7e6"  # light beige
+secondaryBackgroundColor = "#ffe8cc"  # light cream
+textColor = "#333333"  # dark gray for better contrast
+font = "sans serif"
