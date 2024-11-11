@@ -91,39 +91,35 @@ def _make_api_tool_result(result: ToolResult,
         "is_error": is_error,
     }
 
-def group_tool_message_params(events: List[BetaMessageParam]) -> List[BetaMessageParam]:
+
+def group_tool_messages(events: List[DemoEvent]) -> List[DemoEvent]:
     """
     Anthropic gets angry if you send it a tool_use event that is not followed by a tool_result event.
-    This function rewrites the history a little bit so that tool_use events and tool_result events are
-    properly grouped.
+    This function rewrites the history a little bit so that tool_use events and tool_result events are properly grouped.
+
+    It also removes any "pending" tool_use events that are not followed by a tool_result event (yet?)
     """
-    if not events:
-        return []
-    ret = [events[0]]
-    for event in events[1:]:
-        last_event = ret[-1]
-        if isinstance(event['content'], str) or isinstance(last_event['content'], str):
-            ret.append(event)
+    tool_results_by_tool_use_id = {}
+    for event in events:
+        if event['type'] == 'tool_result':
+            tool_results_by_tool_use_id[event['tool_use_id']] = event['result']
+
+    ret = []
+    for event in events:
+        if event['type'] == 'tool_result':
             continue
-        if not event['content'] or not last_event['content']:
+        if event['type'] == 'tool_use':
+            tool_result = tool_results_by_tool_use_id.get(event['id'])
+            if tool_result:
+                ret.append(event)
+                ret.append({
+                    "type": "tool_result",
+                    "result": tool_result,
+                    "tool_use_id": event['id'],
+                })
+        else:
             ret.append(event)
-            continue
-        content = list(event['content'])[0]
-        last_content = list(last_event['content'])
-        last_content_type = last_content[-1]['type']
-        if last_content_type != 'tool_use' and last_content_type != 'tool_result':
-            ret.append(event)
-            continue
-        
-        if content['type'] != last_content_type:
-            ret.append(event)
-            continue
-        if content['type'] != 'tool_use' and content['type'] != 'tool_result':
-            ret.append(event)
-            continue
-        last_content.append(content)
-        ret[-1]['content'] = last_content
-    return ret
+
 
 def to_beta_message_param(event: DemoEvent) -> Optional[BetaMessageParam]:
     """ Takes a DemoEvent and converts it to a BetaMessageParam (the format expected by the anthropic tool use API) """

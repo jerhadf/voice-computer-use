@@ -13,7 +13,7 @@ from anthropic.types.beta import (
 )
 from pydantic.utils import assert_never
 
-from computer_use_demo.state import DemoEvent, State, WorkerEvent, WorkerEventAnthropicResponse, WorkerQueue, group_tool_message_params, to_beta_message_param
+from computer_use_demo.state import DemoEvent, State, WorkerEvent, WorkerEventAnthropicResponse, WorkerQueue, group_tool_messages, to_beta_message_param
 
 from .tools import BashTool, ComputerTool, EditTool, ToolCollection
 
@@ -65,12 +65,12 @@ async def phone_anthropic(
         f"{SYSTEM_PROMPT}{' ' + system_prompt_suffix if system_prompt_suffix else ''}"
     )
 
-    messages = messages=group_tool_message_params([
+    messages = messages=[
         x for x in [
             to_beta_message_param(message)
-            for message in demo_events
+            for message in group_tool_messages(demo_events)
         ] if x
-    ])
+    ]
 
     _maybe_filter_to_n_most_recent_images(messages, images_to_keep=only_n_most_recent_images)
     tools = cast(list[BetaToolParam], tool_collection.to_params())
