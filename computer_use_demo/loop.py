@@ -46,6 +46,7 @@ SYSTEM_PROMPT = f"""<SYSTEM_CAPABILITY>
 * When viewing a webpage, first use your computer tool to view it and explore it.  But, if there is a lot of text on that page, instead curl the html of that page to a file on disk and then using your StrReplaceEditTool to view the contents in plain text.
 </IMPORTANT>"""
 
+
 async def phone_anthropic(
     *,
     demo_events: list[DemoEvent],
@@ -56,6 +57,10 @@ async def phone_anthropic(
     only_n_most_recent_images: Optional[int],
     max_tokens: int,
 ) -> BetaMessage:
+    """
+    Makes an API request to Anthropic to update it with the latest tool results,
+    get additional text to speak to the user, and more instructions for tool use.
+    """
     system = (
         f"{SYSTEM_PROMPT}{' ' + system_prompt_suffix if system_prompt_suffix else ''}"
     )
@@ -131,7 +136,7 @@ def _maybe_filter_to_n_most_recent_images(
             tool_result["content"] = new_content
 
 def process_computer_use_event(state: State, result: WorkerEvent):
-    """Updates the state based on the result from the background thread."""
+    """Updates the state based on the result from the worker thread."""
     if result['type'] == 'anthropic_response':
         response = result['response']
         for content_block in response.content:

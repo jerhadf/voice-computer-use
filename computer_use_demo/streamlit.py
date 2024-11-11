@@ -219,7 +219,8 @@ def _render_status_indicator(state: State):
     if current_event['type'] == 'tool_result' or current_event['type'] == 'user_input':
         st.status(label="Waiting for response from Anthropic...")
     elif current_event['type'] == 'tool_use':
-        st.status(label=f"Running command {current_event['name']}...")
+        st.status(label=f"Running tool {current_event['name']}...")
+        st.code(current_event['input'])
     elif current_event['type'] == 'assistant_output':
         return
     elif current_event['type'] == 'error':

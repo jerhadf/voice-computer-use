@@ -38,7 +38,16 @@ class DemoEventError(TypedDict):
     type: Literal['error']
     error: Any
 
-
+"""
+Demo events are a canonical representation of the events that happened throughout the chat session.
+They are stored in `state.demo_events` and used
+ - to calculate a chat history to send as context to the Anthropic Computer Use API.
+ - to determine the state of the chat session and what should happen next -- the "worker" has a cursor
+   that steps through the demo events and makes sure appropriate action is taken for each event that
+   requires it
+ - The latest screenshot is taken from the chat history and displayed.
+ - A chat history can be rendered for debugging.
+"""
 DemoEvent = DemoEventUserInput | DemoEventAssistantOutput | DemoEventToolUse | DemoEventToolResult | DemoEventError
 
 
@@ -83,6 +92,11 @@ def _make_api_tool_result(result: ToolResult,
     }
 
 def group_tool_message_params(events: List[BetaMessageParam]) -> List[BetaMessageParam]:
+    """
+    Anthropic gets angry if you send it a tool_use event that is not followed by a tool_result event.
+    This function rewrites the history a little bit so that tool_use events and tool_result events are
+    properly grouped.
+    """
     if not events:
         return []
     ret = [events[0]]
@@ -112,6 +126,7 @@ def group_tool_message_params(events: List[BetaMessageParam]) -> List[BetaMessag
     return ret
 
 def to_beta_message_param(event: DemoEvent) -> Optional[BetaMessageParam]:
+    """ Takes a DemoEvent and converts it to a BetaMessageParam (the format expected by the anthropic tool use API) """
     if event['type'] == 'user_input':
         return {
             "content": [{
@@ -163,10 +178,22 @@ class WorkerEventFinished(TypedDict):
     type: Literal['finished']
     cursor: int
 
+"""
+Long-running tasks (tool uses and calls to the anthropic API) need to be executed in a separate thread that is
+immune from being interrupted when Streamlit decides to terminate early and rerun (e.g. in response to user 
+interaction or -- even more frequently -- the EVI chat component changing its value and refreshing).
+
+The worker thread puts its messages into a queue, which the main thread (the Streamlit app) reads from and processes.
+WorkerEvent describes the type of the messages that the worker thread puts onto the queue.
+"""
 WorkerEvent = WorkerEventToolResult | WorkerEventAnthropicResponse | WorkerEventError | WorkerEventFinished
 
-# Type safety around the generic Queue
 class WorkerQueue():
+    """
+    Type safe wrapper around Queue. Otherwise .put and .get would accept Any, but it's nice to have the type
+    checker understand that they are expected to be of type `WorkerEvent`.
+    """
+
     _queue: Queue
     def __init__(self, queue):
         self._queue = queue
@@ -179,6 +206,10 @@ class WorkerQueue():
 
 
 class State:
+    """
+    Type safe wrapper around `st.session_state`. It's nice to explicitly register the types of the fields that the demo expects to be able
+    to set/retrieve within the session state.
+    """
     _session_state: SessionStateProxy
 
     def __init__(self, session_state: SessionStateProxy):
