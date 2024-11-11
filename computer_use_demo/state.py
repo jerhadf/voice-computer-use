@@ -99,26 +99,23 @@ def group_tool_messages(events: List[DemoEvent]) -> List[DemoEvent]:
 
     It also removes any "pending" tool_use events that are not followed by a tool_result event (yet?)
     """
-    tool_results_by_tool_use_id = {}
+    tool_uses_by_id = {}
     for event in events:
-        if event['type'] == 'tool_result':
-            tool_results_by_tool_use_id[event['tool_use_id']] = event['result']
+        if event['type'] == 'tool_use':
+            tool_uses_by_id[event['id']] = event
 
     ret = []
     for event in events:
-        if event['type'] == 'tool_result':
-            continue
         if event['type'] == 'tool_use':
-            tool_result = tool_results_by_tool_use_id.get(event['id'])
-            if tool_result:
+            continue
+        if event['type'] == 'tool_result':
+            tool_use_id = event['tool_use_id']
+            if tool_use_id in tool_uses_by_id:
+                ret.append(tool_uses_by_id[tool_use_id])
                 ret.append(event)
-                ret.append({
-                    "type": "tool_result",
-                    "result": tool_result,
-                    "tool_use_id": event['id'],
-                })
         else:
             ret.append(event)
+
     return ret
 
 
