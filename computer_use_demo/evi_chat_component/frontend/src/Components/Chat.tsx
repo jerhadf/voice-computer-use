@@ -157,6 +157,7 @@ const InteractiveChat = (props: InteractiveChatProps) => {
         return
       case "clearAudioQueue":
         console.log("Clearing audio queue")
+        // This triggers the audio queue to clear but is kind of hacky.
         sendUserInput("")
         return
     }
@@ -249,6 +250,13 @@ const Chat = (props: ComponentProps) => {
       auth={{ type: "apiKey", value: hume_api_key }}
       configId={config_id}
       onMessage={(message) => {
+        if (message.type === "user_message") {
+          if (message.message.content === '.') {
+            // See "clearAudioQueue". Unfortunately, when we `sendUserInput("")` the backend generates
+            // userMessage(".") which we don't want to actually pass through.
+            return
+          }
+        }
         addEvent({ type: "message", message })
       }}
       onOpen={() => {
