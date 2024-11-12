@@ -156,7 +156,6 @@ const InteractiveChat = (props: InteractiveChatProps) => {
         sendToolMessage(command.message)
         return
       case "clearAudioQueue":
-        console.log("Clearing audio queue")
         // This triggers the audio queue to clear but is kind of hacky.
         sendUserInput("")
         return

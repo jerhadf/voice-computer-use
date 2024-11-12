@@ -83,11 +83,13 @@ async def main():
     if st.session_state.debug:
         st.code("\n".join([m.__repr__() for m in state.demo_events]))
 
-    chat_me_up = st.chat_input(placeholder="Type an assistant message")
-    if chat_me_up:
-        state.add_assistant_output(chat_me_up)
-        state.clear_audio_queue()
-        state.trigger_evi_speech(chat_me_up)
+    if st.session_state.debug:
+        assistant_audio_debug = st.chat_input(placeholder="Type an assistant message")
+        if assistant_audio_debug:
+            state.add_assistant_output(assistant_audio_debug)
+            state.clear_audio_queue()
+            state.trigger_evi_speech(assistant_audio_debug)
+
     new_evi_events = _hume_evi_chat(state=state, debug=st.session_state.debug)
 
     for new_evi_event in new_evi_events:
