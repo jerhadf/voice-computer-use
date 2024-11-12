@@ -21,33 +21,33 @@ const setComponentValue = (value: ComponentValue) => {
 type UseVoiceReturn = ReturnType<typeof useVoice>
 type Command =
   | {
-      type:
-        | "mute"
-        | "unmute"
-        | "pauseAssistant"
-        | "resumeAssistant"
-        | "muteAudio"
-        | "unmuteAudio"
-        | "connect"
-        | "disconnect"
-        | "clearAudioQueue"
-    }
+    type:
+    | "mute"
+    | "unmute"
+    | "pauseAssistant"
+    | "resumeAssistant"
+    | "muteAudio"
+    | "unmuteAudio"
+    | "connect"
+    | "disconnect"
+    | "clearAudioQueue"
+  }
   | {
-      type: "sendUserInput"
-      message: Parameters<UseVoiceReturn["sendUserInput"]>[0]
-    }
+    type: "sendUserInput"
+    message: Parameters<UseVoiceReturn["sendUserInput"]>[0]
+  }
   | {
-      type: "sendAssistantInput"
-      message: Parameters<UseVoiceReturn["sendAssistantInput"]>[0]
-    }
+    type: "sendAssistantInput"
+    message: Parameters<UseVoiceReturn["sendAssistantInput"]>[0]
+  }
   | {
-      type: "sendSessionSettings"
-      message: Parameters<UseVoiceReturn["sendSessionSettings"]>[0]
-    }
+    type: "sendSessionSettings"
+    message: Parameters<UseVoiceReturn["sendSessionSettings"]>[0]
+  }
   | {
-      type: "sendToolMessage"
-      message: Parameters<UseVoiceReturn["sendToolMessage"]>[0]
-    }
+    type: "sendToolMessage"
+    message: Parameters<UseVoiceReturn["sendToolMessage"]>[0]
+  }
 
 type InteractiveChatProps = {
   commands: Command[]
@@ -77,6 +77,15 @@ const InteractiveChat = (props: InteractiveChatProps) => {
   } = useVoice()
 
   const [eventCursor, setEventCursor] = React.useState(0)
+
+  // Make sure to disconnect the chat when the component unmounts.
+  useEffect(() => {
+    return () => {
+      console.log('Unmounted')
+      disconnect()
+    }
+  }, [])
+
   useEffect(() => {
     const newEvents = events.slice(eventCursor, events.length)
     if (newEvents.length === 0) {
@@ -210,19 +219,19 @@ const listenedTo = (
 type VoiceProviderParam = Parameters<typeof VoiceProvider>[0]
 type ChatEvent =
   | {
-      type: "message"
-      message: Parameters<NonNullable<VoiceProviderParam["onMessage"]>>[0]
-    }
+    type: "message"
+    message: Parameters<NonNullable<VoiceProviderParam["onMessage"]>>[0]
+  }
   | {
-      type: "closed"
-    }
+    type: "closed"
+  }
   | {
-      type: "opened"
-    }
+    type: "opened"
+  }
   | {
-      type: "error"
-      error: Parameters<NonNullable<VoiceProviderParam["onError"]>>[0]
-    }
+    type: "error"
+    error: Parameters<NonNullable<VoiceProviderParam["onError"]>>[0]
+  }
 
 const Chat = (props: ComponentProps) => {
   const args = props.args as StreamlitArgs
