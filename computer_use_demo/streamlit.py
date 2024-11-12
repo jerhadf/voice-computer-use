@@ -68,7 +68,7 @@ async def main():
     print("Rerunning...")
     state = State(st.session_state)
 
-    st.title("Computer voice control")
+    st.title("Empathic voice computer use")
 
     if auth_error := validate_auth(PROVIDER, ANTHROPIC_API_KEY):
         st.warning(f"Please resolve the following auth issue:\n\n{auth_error}")
@@ -87,7 +87,6 @@ async def main():
         assistant_audio_debug = st.chat_input(placeholder="Type an assistant message")
         if assistant_audio_debug:
             state.add_assistant_output(assistant_audio_debug)
-            state.clear_audio_queue()
             state.trigger_evi_speech(assistant_audio_debug)
 
     new_evi_events = _hume_evi_chat(state=state, debug=st.session_state.debug)
