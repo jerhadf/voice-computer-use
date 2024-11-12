@@ -19,18 +19,14 @@ import os
 from pathlib import PosixPath
 import base64
 
-# Define constants and configurations
 CONFIG_DIR = PosixPath("~/.anthropic").expanduser()
 API_KEY_FILE = CONFIG_DIR / "api_key"
-
 
 class Sender(StrEnum):
     USER = "user"
     BOT = "assistant"
     TOOL = "tool"
 
-
-# Initialize global variables
 PROVIDER = APIProvider.ANTHROPIC
 MODEL = PROVIDER_TO_DEFAULT_MODEL_NAME[PROVIDER]
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
@@ -38,10 +34,7 @@ CUSTOM_SYSTEM_PROMPT = ""
 ONLY_N_MOST_RECENT_IMAGES = 10
 HIDE_IMAGES = False
 
-
-# Define the background thread class
 class AsyncioThread(threading.Thread):
-
     def __init__(self):
         super().__init__(daemon=True)
         self.loop = asyncio.new_event_loop()
@@ -51,18 +44,19 @@ class AsyncioThread(threading.Thread):
         self.loop.run_forever()
 
 
+# st.cache_resource means that the AsyncioThread is *global* across all users and sessions.
 @st.cache_resource()
 def worker_thread():
     thread = AsyncioThread()
     thread.start()
     return thread
 
-
-# Start the asyncio event loop in a background thread only once
+# each queue, however, is local to the session. If you refresh the page you'll get a new worker queue.
 if 'worker_queue' not in st.session_state:
     st.session_state.worker_queue = WorkerQueue(Queue())
 
-
+# The main streamlit render loop runs / resets every time the user interacts with the page, or when a
+# widget refreshes e.g. when the Evi chat has a new event.
 async def main():
     """Render loop for Streamlit."""
     print("Rerunning...")
@@ -80,14 +74,15 @@ async def main():
     if user_input_message:
         state.add_user_input(user_input_message)
 
-    if st.session_state.debug:
+    debug = st.session_state.debug
+    if debug:
         st.code("\n".join([m.__repr__() for m in state.demo_events]))
 
-    if st.session_state.debug:
-        assistant_audio_debug = st.chat_input(placeholder="Type an assistant message")
-        if assistant_audio_debug:
-            state.add_assistant_output(assistant_audio_debug)
-            state.trigger_evi_speech(assistant_audio_debug)
+    if debug:
+        debug_assistant_audio = st.chat_input(placeholder="Type an assistant message")
+        if debug_assistant_audio:
+            state.add_assistant_output(debug_assistant_audio)
+            state.trigger_evi_speech(debug_assistant_audio)
 
     new_evi_events = _hume_evi_chat(state=state, debug=st.session_state.debug)
 
@@ -249,10 +244,11 @@ def _render_latest_command(state: State):
 
 
 def _render_status_indicator(state: State):
-    if len(state.demo_events) == 0 or not state.worker_running:
+    if state.worker_cursor == len(state.demo_events):
         st.status(label="Waiting for user input...")
-        return
+
     current_event = state.demo_events[state.worker_cursor]
+
     if current_event['type'] == 'tool_result' or current_event[
             'type'] == 'user_input':
         st.status(label="Waiting for response from Anthropic...")
@@ -260,7 +256,7 @@ def _render_status_indicator(state: State):
         st.status(label=f"Running tool {current_event['name']}...")
         st.code(current_event['input'])
     elif current_event['type'] == 'assistant_output':
-        st.code(current_event)
+        st.status(label=f"Thinking...")
     elif current_event['type'] == 'error':
         st.code(current_event)
         return
