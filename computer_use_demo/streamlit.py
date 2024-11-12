@@ -86,7 +86,7 @@ async def main():
     chat_me_up = st.chat_input(placeholder="Type an assistant message")
     if chat_me_up:
         state.add_assistant_output(chat_me_up)
-        state.clean_audio_queue()
+        state.clear_audio_queue()
         state.trigger_evi_speech(chat_me_up)
     new_evi_events = _hume_evi_chat(state=state, debug=st.session_state.debug)
 
