@@ -1,4 +1,4 @@
-run = ["streamlit", "run", "main.py"]
+run = ["bash", "-c", "firefox & streamlit run main.py"]
 modules = ["bash", "nodejs-20", "python-3.11", "web"]
 
 [nix]

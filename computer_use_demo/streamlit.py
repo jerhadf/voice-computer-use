@@ -1,5 +1,5 @@
 from enum import StrEnum
-from typing import List, Optional, assert_never
+from typing import Tuple, List, Optional, assert_never
 import streamlit as st
 import threading
 import asyncio
@@ -22,10 +22,12 @@ import base64
 CONFIG_DIR = PosixPath("~/.anthropic").expanduser()
 API_KEY_FILE = CONFIG_DIR / "api_key"
 
+
 class Sender(StrEnum):
     USER = "user"
     BOT = "assistant"
     TOOL = "tool"
+
 
 PROVIDER = APIProvider.ANTHROPIC
 MODEL = PROVIDER_TO_DEFAULT_MODEL_NAME[PROVIDER]
@@ -34,7 +36,9 @@ CUSTOM_SYSTEM_PROMPT = ""
 ONLY_N_MOST_RECENT_IMAGES = 10
 HIDE_IMAGES = False
 
+
 class AsyncioThread(threading.Thread):
+
     def __init__(self):
         super().__init__(daemon=True)
         self.loop = asyncio.new_event_loop()
@@ -51,9 +55,11 @@ def worker_thread():
     thread.start()
     return thread
 
+
 # each queue, however, is local to the session. If you refresh the page you'll get a new worker queue.
 if 'worker_queue' not in st.session_state:
     st.session_state.worker_queue = WorkerQueue(Queue())
+
 
 # The main streamlit render loop runs / resets every time the user interacts with the page, or when a
 # widget refreshes e.g. when the Evi chat has a new event.
@@ -79,12 +85,13 @@ async def main():
         st.code("\n".join([m.__repr__() for m in state.demo_events]))
 
     if debug:
-        debug_assistant_audio = st.chat_input(placeholder="Type an assistant message")
+        debug_assistant_audio = st.chat_input(
+            placeholder="Type an assistant message")
         if debug_assistant_audio:
             state.add_assistant_output(debug_assistant_audio)
             state.trigger_evi_speech(debug_assistant_audio)
 
-    new_evi_events = _hume_evi_chat(state=state, debug=st.session_state.debug)
+    evi_is_connected, new_evi_events = _hume_evi_chat(state=state, debug=st.session_state.debug)
 
     for new_evi_event in new_evi_events:
         state.add_user_input(new_evi_event)
@@ -92,7 +99,7 @@ async def main():
     _render_latest_command(state)
     _render_latest_screenshot(state.demo_events)
     _render_latest_error(state)
-    _render_status_indicator(state)
+    _render_status_indicator(state, evi_is_connected)
 
     if not state.worker_running and state.worker_cursor < len(
             state.demo_events):
@@ -138,7 +145,7 @@ def validate_auth(provider: APIProvider, api_key: str | None):
             return "Enter your Anthropic API key in the sidebar to continue."
 
 
-def _hume_evi_chat(*, state: State, debug: bool) -> List[str]:
+def _hume_evi_chat(*, state: State, debug: bool) -> Tuple[bool, List[str]]:
     """
     Renders the EVI chat, handles commands to EVI that are passed in through
     the session state, and acts on messages received from EVI. Returns a string
@@ -150,7 +157,7 @@ def _hume_evi_chat(*, state: State, debug: bool) -> List[str]:
 
     if not hume_api_key:
         st.error("Please set HUME_API_KEY environment variable")
-        return []
+        return (False, [])
 
     new_events = []
     chat_result = empathic_voice_chat(key="evi_chat",
@@ -216,7 +223,7 @@ def _hume_evi_chat(*, state: State, debug: bool) -> List[str]:
     if should_rerun:
         st.rerun()
 
-    return ret
+    return is_connected, ret
 
 
 def _render_latest_error(state: State):
@@ -243,11 +250,15 @@ def _render_latest_command(state: State):
             return
 
 
-def _render_status_indicator(state: State):
+def _render_status_indicator(state: State, evi_is_connected: bool):
+    if not evi_is_connected:
+        st.status(label="Waiting for EVI to connect...")
+        return
     if state.worker_cursor == len(state.demo_events):
         st.status(label="Waiting for user input...")
+        return
 
-    current_event = state.demo_events[state.worker_cursor]
+    current_event = state.demo_events[state.worker_cursor - 1]
 
     if current_event['type'] == 'tool_result' or current_event[
             'type'] == 'user_input':
