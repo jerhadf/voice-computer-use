@@ -1,10 +1,15 @@
-# Anthropic Computer Use Demo on Replit
+# Hume + Anthropic - Voice Computer Use Demo on Replit
 
 ## Getting started
 * Add your ANTHROPIC_API_KEY to the Secrets pane
+* Add your HUME_API_KEY and config ID from platform.hume.ai 
 * Click Run
 * Watch the AI work in the Output pane
 * Send commands to it in the Webview
+
+## Usage Tips 
+* Run `firefox &` in the shell to pre-open Firefox for the agent - must be done before Running
+* For changes to the repo to take effect, run `cd computer_use_demo/evi_chat_component/frontend` and `npm run build` in the shell 
 
 ## Caution
 
