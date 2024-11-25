@@ -50,6 +50,7 @@ type Command =
     }
 
 type InteractiveChatProps = {
+  hume_config_id: string | null
   commands: Command[]
   events: ChatEvent[]
   listen_to: Array<Listenable>
@@ -57,7 +58,7 @@ type InteractiveChatProps = {
 }
 
 const InteractiveChat = (props: InteractiveChatProps) => {
-  const { commands, events, listen_to, debug } = props
+  const { commands, events, listen_to, debug, hume_config_id } = props
   const {
     connect,
     disconnect,
@@ -179,7 +180,12 @@ const InteractiveChat = (props: InteractiveChatProps) => {
     return (
       <pre>
         {JSON.stringify(
-          { commandCursor, commands: commands.map((c, i) => [i, c]), events },
+          {
+            hume_config_id,
+            commandCursor,
+            commands: commands.map((c, i) => [i, c]),
+            events,
+          },
           null,
           2
         )}
@@ -193,7 +199,6 @@ type Listenable =
   | ChatEvent["type"]
 type StreamlitArgs = InteractiveChatProps & {
   hume_api_key: string
-  config_id: string
 }
 const defaultListenTo: Array<Listenable> = [
   "message.user_message",
@@ -235,7 +240,7 @@ type ChatEvent =
 
 const Chat = (props: ComponentProps) => {
   const args = props.args as StreamlitArgs
-  const { hume_api_key, listen_to, commands, config_id, debug } = args
+  const { hume_api_key, listen_to, commands, hume_config_id, debug } = args
   const [events, setEvents] = React.useState<ChatEvent[]>([])
   const addEvent = (event: ChatEvent) => {
     console.log("Event dispatched: ", event.type)
@@ -248,7 +253,7 @@ const Chat = (props: ComponentProps) => {
     <VoiceProvider
       auth={{ type: "apiKey", value: hume_api_key }}
       hostname="api.hume.ai"
-      configId={config_id}
+      configId={hume_config_id || undefined}
       onMessage={(message) => {
         if (message.type === "user_message") {
           if (message.message.content === ".") {
@@ -270,6 +275,7 @@ const Chat = (props: ComponentProps) => {
       }}
     >
       <InteractiveChat
+        hume_config_id={hume_config_id}
         commands={commands}
         events={events}
         listen_to={listen_to}

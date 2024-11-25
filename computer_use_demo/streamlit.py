@@ -15,6 +15,7 @@ from computer_use_demo.loop import (
     process_computer_use_event,
 )
 from computer_use_demo.tools import ToolResult
+from PIL import Image
 import os
 from pathlib import PosixPath
 import base64
@@ -68,6 +69,11 @@ async def main():
     print("Rerunning...")
     state = State(st.session_state)
 
+    # hume_logo = Image.open(
+    #     "computer_use_demo/evi_chat_component/hume_logo.png"
+    # )
+    # st.image(hume_logo, width=200)
+
     st.title("Empathic voice computer use")
 
     if auth_error := validate_auth(PROVIDER, ANTHROPIC_API_KEY):
@@ -91,7 +97,8 @@ async def main():
             state.add_assistant_output(debug_assistant_audio)
             state.trigger_evi_speech(debug_assistant_audio)
 
-    evi_is_connected, new_evi_events = _hume_evi_chat(state=state, debug=st.session_state.debug)
+    evi_is_connected, new_evi_events = _hume_evi_chat(
+        state=state, debug=st.session_state.debug)
 
     for new_evi_event in new_evi_events:
         state.add_user_input(new_evi_event)
@@ -155,6 +162,8 @@ def _hume_evi_chat(*, state: State, debug: bool) -> Tuple[bool, List[str]]:
     hume_api_key = os.getenv("HUME_API_KEY")
     event: Optional[EviEvent] = None
 
+    hume_config_id = os.getenv("HUME_CONFIG_ID") or None
+
     if not hume_api_key:
         st.error("Please set HUME_API_KEY environment variable")
         return (False, [])
@@ -163,6 +172,7 @@ def _hume_evi_chat(*, state: State, debug: bool) -> Tuple[bool, List[str]]:
     chat_result = empathic_voice_chat(key="evi_chat",
                                       commands=state.evi_commands,
                                       hume_api_key=hume_api_key,
+                                      hume_config_id=hume_config_id,
                                       debug=debug)
     events = chat_result['events']
     is_muted = chat_result['is_muted']

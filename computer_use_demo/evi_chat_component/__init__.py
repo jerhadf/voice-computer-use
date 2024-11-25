@@ -36,7 +36,8 @@ ChatEvent = Union[MessageEvent, ClosedEvent, OpenedEvent, ErrorEvent]
 
 class ChatCommandToggle(TypedDict):
     type: Literal['mute', 'unmute', 'connect', 'disconnect', 'pauseAssistant',
-                  'resumeAssistant', 'muteAudio', 'unmuteAudio', 'clearAudioQueue']
+                  'resumeAssistant', 'muteAudio', 'unmuteAudio',
+                  'clearAudioQueue']
 
 
 class ChatCommandSendUserInput(TypedDict):
@@ -73,11 +74,13 @@ class ComponentValue(TypedDict):
 def empathic_voice_chat(
     *,
     hume_api_key: str,
+    hume_config_id: Optional[str],
     commands: List[ChatCommand],
     debug=False,
     key=None,
 ) -> ComponentValue:
     component_value = _component_func(hume_api_key=hume_api_key,
+                                      hume_config_id=hume_config_id,
                                       commands=commands,
                                       key=key,
                                       debug=debug,
