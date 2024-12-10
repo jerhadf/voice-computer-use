@@ -1,5 +1,7 @@
 # Hume + Anthropic - Voice Computer Use Demo on Replit
 
+https://replit.com/@jerhadf/Hume-Anthropic-Computer-Use 
+
 ## Getting started
 * Add your ANTHROPIC_API_KEY to the Secrets pane
 * Add your HUME_API_KEY and config ID from platform.hume.ai 
